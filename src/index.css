@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #09090b;
+  --color-ink-900: #111113;
+  --color-ink-850: #17171a;
+  --color-ink-800: #1f1f23;
+  --color-ink-700: #2c2c31;
+  --color-ink-500: #6b6b73;
+  --color-ink-300: #a1a1aa;
+  --color-ink-100: #e6e6e9;
+  --color-accent: #22d3ee;
+  --color-accent-dim: #0e7490;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* En el gym se toca con dedos sudados: nada de selecciones accidentales. */
+button, [role="button"] { user-select: none; }
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
+.safe-bottom { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+.safe-top { padding-top: max(0.5rem, env(safe-area-inset-top)); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--color-ink-700); border-radius: 999px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .18s ease-out; }
