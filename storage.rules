@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// ===========================================================================
+// SIN USO. Firebase Storage exige plan de pago, asi que las fotos que subes
+// (avatares, portadas de rutina, imagenes de ejercicios propios) se quedan
+// solo en el dispositivo y no se sincronizan.
+//
+// Se conserva el fichero por si algun dia se pasa al plan Blaze: bastaria con
+// volver a anadir el bloque "storage" a firebase.json y desplegarlo.
+// ===========================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{todo=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -4,9 +4,10 @@ import { cx } from './ui'
 const NAV = [
   { to: '/', label: 'Hoy', icon: '⌂' },
   { to: '/rutinas', label: 'Rutinas', icon: '☰' },
+  { to: '/ejercicios', label: 'Ejercicios', icon: '⛁' },
   { to: '/progreso', label: 'Progreso', icon: '↗' },
-  { to: '/cuerpo', label: 'Peso', icon: '⚖' },
-  { to: '/ajustes', label: 'Ajustes', icon: '⚙' }
+  { to: '/medidas', label: 'Medidas', icon: '⚖' },
+  { to: '/perfil', label: 'Perfil', icon: '☺' }
 ]
 
 export default function Layout() {
@@ -53,12 +54,12 @@ export default function Layout() {
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => cx(
-              'flex flex-1 flex-col items-center gap-0.5 pt-2.5 text-[11px] transition-colors',
+              'flex min-w-0 flex-1 flex-col items-center gap-0.5 pt-2.5 text-[10px] transition-colors',
               isActive ? 'text-accent' : 'text-ink-500'
             )}
           >
-            <span className="text-lg leading-none">{item.icon}</span>
-            {item.label}
+            <span className="text-base leading-none">{item.icon}</span>
+            <span className="max-w-full truncate px-0.5">{item.label}</span>
           </NavLink>
         ))}
       </nav>

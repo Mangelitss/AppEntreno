@@ -2,56 +2,77 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, cx } from './ui'
 
 /**
- * Cronometro de descanso. Arranca solo al confirmar una serie.
- * Usa timestamps en vez de contar ticks, asi que sigue siendo exacto aunque
- * bloquees el movil y el navegador congele el temporizador.
+ * Cuenta atras del descanso, en el hueco central de la pantalla de entreno.
+ *
+ * Cuenta contra un timestamp en vez de acumular ticks: si bloqueas el movil y
+ * el navegador congela los temporizadores, al volver el numero sigue siendo el
+ * correcto en lugar de haberse quedado atras.
  */
 export default function RestTimer({
-  endsAt, onDismiss, onExtend
-}: { endsAt: number | null; onDismiss: () => void; onExtend: (seconds: number) => void }) {
-  const [remaining, setRemaining] = useState(0)
-  const beeped = useRef(false)
+  endsAt, totalSeconds, onDismiss, onExtend
+}: {
+  endsAt: number
+  totalSeconds: number
+  onDismiss: () => void
+  onExtend: (seconds: number) => void
+}) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, Math.round((endsAt - Date.now()) / 1000)))
+  const alerted = useRef(false)
 
   useEffect(() => {
-    if (!endsAt) return
-    beeped.current = false
     const tick = () => setRemaining(Math.max(0, Math.round((endsAt - Date.now()) / 1000)))
     tick()
-    const id = setInterval(tick, 250)
+    const id = setInterval(tick, 200)
     return () => clearInterval(id)
   }, [endsAt])
 
   useEffect(() => {
-    if (!endsAt || remaining > 0 || beeped.current) return
-    beeped.current = true
-    if ('vibrate' in navigator) navigator.vibrate([180, 90, 180])
-  }, [remaining, endsAt])
+    if (remaining > 0) { alerted.current = false; return }
+    if (alerted.current) return
+    alerted.current = true
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
+  }, [remaining])
 
-  if (!endsAt) return null
-
-  const total = Math.max(1, Math.round((endsAt - Date.now()) / 1000) + 1)
-  const pct = Math.max(0, Math.min(100, (remaining / total) * 100))
+  const done = remaining <= 0
   const mm = Math.floor(remaining / 60)
   const ss = remaining % 60
-  const done = remaining <= 0
+
+  const RADIUS = 92
+  const circumference = 2 * Math.PI * RADIUS
+  const ratio = Math.max(0, Math.min(1, remaining / Math.max(1, totalSeconds)))
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-800 bg-ink-900/97 backdrop-blur safe-bottom">
-      <div className="h-1 w-full bg-ink-800">
-        <div
-          className={cx('h-full transition-[width] duration-300', done ? 'bg-emerald-400' : 'bg-accent')}
-          style={{ width: `${done ? 100 : 100 - pct}%` }}
-        />
-      </div>
-      <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-        <div className="flex-1">
-          <div className={cx('font-mono text-2xl tabular-nums', done ? 'text-emerald-400' : 'text-ink-100')}>
-            {done ? 'Listo' : `${mm}:${String(ss).padStart(2, '0')}`}
-          </div>
-          <div className="text-xs text-ink-500">Descanso</div>
+    <div className="flex flex-col items-center gap-4">
+      <div className="relative h-56 w-56">
+        <svg viewBox="0 0 200 200" className="h-full w-full -rotate-90">
+          <circle cx="100" cy="100" r={RADIUS} fill="none" stroke="var(--color-ink-800)" strokeWidth="10" />
+          <circle
+            cx="100" cy="100" r={RADIUS} fill="none" strokeWidth="10" strokeLinecap="round"
+            stroke={done ? 'var(--color-emerald-400, #34d399)' : 'var(--color-accent)'}
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - ratio)}
+            style={{ transition: 'stroke-dashoffset 0.2s linear' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={cx(
+            'font-mono text-5xl font-semibold tabular-nums',
+            done ? 'text-emerald-400' : 'text-ink-100'
+          )}>
+            {done ? '¡Ya!' : `${mm}:${String(ss).padStart(2, '0')}`}
+          </span>
+          <span className="mt-1 text-xs uppercase tracking-wide text-ink-500">
+            {done ? 'Descanso terminado' : 'Descanso'}
+          </span>
         </div>
-        <Button variant="outline" size="sm" onClick={() => onExtend(30)}>+30s</Button>
-        <Button variant={done ? 'primary' : 'subtle'} size="sm" onClick={onDismiss}>Saltar</Button>
+      </div>
+
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={() => onExtend(-15)} disabled={remaining <= 15}>−15s</Button>
+        <Button variant="outline" onClick={() => onExtend(30)}>+30s</Button>
+        <Button variant={done ? 'primary' : 'subtle'} onClick={onDismiss}>
+          {done ? 'Seguir' : 'Saltar'}
+        </Button>
       </div>
     </div>
   )

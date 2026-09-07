@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
-import { mediaUrl } from '../db/catalog'
 import { normalize } from '../lib/stats'
+import { displayName } from '../lib/muscles'
+import ExerciseThumb from './ExerciseThumb'
 import { Button, Input, Pill, Sheet, cx } from './ui'
 import { createCustomExercise } from '../db/actions'
 
@@ -11,8 +12,15 @@ import { createCustomExercise } from '../db/actions'
  * escribir sobre 1.324 ejercicios no se nota ni en un movil viejo.
  */
 export default function ExercisePicker({
-  open, onClose, onPick
-}: { open: boolean; onClose: () => void; onPick: (exerciseId: string) => void }) {
+  open, onClose, onPick, only, title = 'Anadir ejercicio'
+}: {
+  open: boolean
+  onClose: () => void
+  onPick: (exerciseId: string) => void
+  /** limita la lista a actividades de cardio o a ejercicios de fuerza */
+  only?: 'cardio' | 'reps'
+  title?: string
+}) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string>('')
   const [equipment, setEquipment] = useState<string>('')
@@ -34,13 +42,14 @@ export default function ExercisePicker({
     const q = normalize(query.trim())
     const terms = q.split(/\s+/).filter(Boolean)
     return (exercises ?? [])
-      .filter(e => !e.deletedAt)
+      .filter(e => !e.deletedAt && e.archived !== 1)
+      .filter(e => !only || (e.tracking ?? 'reps') === only)
       .filter(e => !category || e.category === category)
       .filter(e => !equipment || e.equipment === equipment)
-      .filter(e => terms.every(t => e.search.includes(t)))
+      .filter(e => terms.every(t => e.search.includes(t) || normalize(e.alias ?? '').includes(t)))
       .sort((a, b) => (b.favorite - a.favorite) || a.name.localeCompare(b.name))
       .slice(0, 120)
-  }, [exercises, query, category, equipment])
+  }, [exercises, query, category, equipment, only])
 
   async function handleCreate() {
     if (!newName.trim()) return
@@ -52,13 +61,13 @@ export default function ExercisePicker({
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Anadir ejercicio" wide>
+    <Sheet open={open} onClose={onClose} title={title} wide>
       <div className="sticky top-0 z-10 space-y-3 border-b border-ink-800 bg-ink-900 p-4">
         <Input
           autoFocus
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Buscar: bench, squat, curl..."
+          placeholder={only === 'cardio' ? 'Buscar: bici, tenis, HIIT...' : 'Buscar: bench, squat, curl...'}
           className="w-full"
         />
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -88,15 +97,9 @@ export default function ExercisePicker({
               onClick={() => onPick(e.id)}
               className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ink-850"
             >
-              <img
-                src={mediaUrl(e.image) ?? ''}
-                alt=""
-                loading="lazy"
-                onError={ev => { (ev.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-                className="h-11 w-11 shrink-0 rounded-lg bg-ink-800 object-cover"
-              />
+              <ExerciseThumb exercise={e} />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm capitalize">{e.name}</p>
+                <p className="truncate text-sm capitalize">{displayName(e)}</p>
                 <p className="truncate text-xs text-ink-500">{e.equipment} · {e.target || e.category}</p>
               </div>
               {e.isCustom === 1 && <Pill>propio</Pill>}

@@ -1,0 +1,94 @@
+rules_version = '2';
+
+// ===========================================================================
+// AppEntreno · reglas de Firestore
+//
+// Todo lo tuyo cuelga de users/{uid}, asi que la regla es una sola: solo el
+// dueno entra. Eso sustituye a la politica por tabla que haria falta en SQL.
+//
+// El catalogo de 1.324 ejercicios no esta aqui a proposito: es igual para
+// todos y cada movil se lo descarga del JSON. Solo suben los ejercicios que
+// creas tu y los del catalogo que hayas editado.
+// ===========================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function esElDueno(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function sonAmigos(otro) {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/friendships/$(request.auth.uid + '_' + otro))
+        || exists(/databases/$(database)/documents/friendships/$(otro + '_' + request.auth.uid))
+      );
+    }
+
+    // ---------------------------------------------------------------------
+    // Tus datos: entrenos, rutinas, medidas, ajustes...
+    // ---------------------------------------------------------------------
+    match /users/{uid} {
+      allow read, write: if esElDueno(uid);
+
+      match /{coleccion}/{documento} {
+        allow read, write: if esElDueno(uid);
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Perfil publico: nombre y avatar. Lo lee cualquiera que haya entrado,
+    // porque es lo que hara falta para buscar y anadir amigos.
+    // ---------------------------------------------------------------------
+    match /profiles/{uid} {
+      allow read: if request.auth != null;
+      allow write: if esElDueno(uid);
+    }
+
+    // ---------------------------------------------------------------------
+    // Resumen para comparar estadisticas.
+    //
+    // En Firestore no hay JOIN: leer los entrenos crudos de un amigo seria
+    // caro y expondria de mas. Cada uno publica aqui unas pocas cifras ya
+    // calculadas, y solo las ven sus amigos.
+    // ---------------------------------------------------------------------
+    match /publicStats/{uid} {
+      allow read: if esElDueno(uid) || sonAmigos(uid);
+      allow write: if esElDueno(uid);
+    }
+
+    // ---------------------------------------------------------------------
+    // Rutinas compartidas. Se copian, no se enlazan: si el autor la cambia
+    // manana, la tuya no se mueve.
+    // ---------------------------------------------------------------------
+    match /sharedRoutines/{id} {
+      allow read: if request.auth != null && (
+        resource.data.visibility == 'publica'
+        || esElDueno(resource.data.ownerId)
+        || (resource.data.visibility == 'amigos' && sonAmigos(resource.data.ownerId))
+      );
+      allow create: if esElDueno(request.resource.data.ownerId);
+      allow update, delete: if esElDueno(resource.data.ownerId);
+    }
+
+    // ---------------------------------------------------------------------
+    // Amistades. El id es "solicitante_destinatario", asi no hay duplicados.
+    // ---------------------------------------------------------------------
+    match /friendships/{id} {
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.requesterId
+        || request.auth.uid == resource.data.addresseeId
+      );
+      allow create: if esElDueno(request.resource.data.requesterId);
+      allow update, delete: if request.auth != null && (
+        request.auth.uid == resource.data.requesterId
+        || request.auth.uid == resource.data.addresseeId
+      );
+    }
+
+    // Todo lo que no este contemplado arriba, denegado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -4,24 +4,30 @@ import Layout from './components/Layout'
 import Today from './pages/Today'
 import Train from './pages/Train'
 import Routines from './pages/Routines'
+import Exercises from './pages/Exercises'
+import ExerciseDetail from './pages/ExerciseDetail'
 import RoutineEditor from './pages/RoutineEditor'
 import Progress from './pages/Progress'
 import Body from './pages/Body'
 import Settings from './pages/Settings'
+import Profile from './pages/Profile'
+import Auth from './pages/Auth'
 import { ensureCatalog } from './db/catalog'
-import { db } from './db/db'
-import { stamp } from './db/repo'
-import type { ScheduleDay } from './db/types'
+import { ensureSchedule } from './db/schedule'
+import { ensureCardioCatalog } from './db/cardio-catalog'
+import { AuthProvider } from './components/AuthProvider'
+import { SyncProvider } from './components/SyncProvider'
 
-/** Crea las 7 filas del calendario la primera vez. */
-async function ensureSchedule() {
-  const count = await db.schedule.count()
-  if (count >= 7) return
-  const existing = new Set((await db.schedule.toArray()).map(d => d.weekday))
-  for (let weekday = 0; weekday < 7; weekday++) {
-    if (existing.has(weekday)) continue
-    await db.schedule.put(stamp({ weekday, routineId: null }) as ScheduleDay)
-  }
+/** El arranque se comparte entre montajes para que nunca corra dos veces a la vez. */
+let bootstrap: Promise<void> | null = null
+
+function boot(): Promise<void> {
+  bootstrap ??= (async () => {
+    await ensureSchedule()
+    await ensureCatalog()
+    await ensureCardioCatalog()
+  })().catch(err => { bootstrap = null; throw err })
+  return bootstrap
 }
 
 export default function App() {
@@ -32,8 +38,7 @@ export default function App() {
     let cancelled = false
     ;(async () => {
       try {
-        await ensureSchedule()
-        await ensureCatalog()
+        await boot()
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Error al iniciar')
       } finally {
@@ -61,17 +66,27 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Today />} />
-        <Route path="/rutinas" element={<Routines />} />
-        <Route path="/rutinas/:routineId" element={<RoutineEditor />} />
-        <Route path="/progreso" element={<Progress />} />
-        <Route path="/cuerpo" element={<Body />} />
-        <Route path="/ajustes" element={<Settings />} />
-        <Route path="/entreno/:workoutId" element={<Train />} />
-        <Route path="*" element={<Today />} />
-      </Route>
-    </Routes>
+    <AuthProvider>
+      <SyncProvider>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Today />} />
+            <Route path="/rutinas" element={<Routines />} />
+            <Route path="/rutinas/:routineId" element={<RoutineEditor />} />
+            <Route path="/ejercicios" element={<Exercises />} />
+            <Route path="/ejercicios/:exerciseId" element={<ExerciseDetail />} />
+            <Route path="/progreso" element={<Progress />} />
+            <Route path="/medidas" element={<Body />} />
+            {/* la ruta antigua sigue viva por si tienes la app instalada en esa pantalla */}
+            <Route path="/cuerpo" element={<Body />} />
+            <Route path="/perfil" element={<Profile />} />
+            <Route path="/entrar" element={<Auth />} />
+            <Route path="/ajustes" element={<Settings />} />
+            <Route path="/entreno/:workoutId" element={<Train />} />
+            <Route path="*" element={<Today />} />
+          </Route>
+        </Routes>
+      </SyncProvider>
+    </AuthProvider>
   )
 }

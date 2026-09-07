@@ -1,0 +1,5 @@
+{
+  "//": "La sincronizacion siempre pregunta 'que ha cambiado desde X'. Los indices de un solo campo los crea Firestore solo, asi que de momento no hace falta ninguno compuesto.",
+  "indexes": [],
+  "fieldOverrides": []
+}

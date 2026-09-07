@@ -91,12 +91,13 @@ export function Sheet({
   )
 }
 
-export function Pill({ children, tone = 'default' }: { children: ReactNode; tone?: 'default' | 'accent' | 'warn' | 'good' }) {
+export function Pill({ children, tone = 'default' }: { children: ReactNode; tone?: 'default' | 'accent' | 'warn' | 'good' | 'bad' }) {
   const tones = {
     default: 'bg-ink-800 text-ink-300',
     accent: 'bg-accent/15 text-accent',
     warn: 'bg-amber-500/15 text-amber-300',
-    good: 'bg-emerald-500/15 text-emerald-300'
+    good: 'bg-emerald-500/15 text-emerald-300',
+    bad: 'bg-red-500/15 text-red-300'
   }
   return <span className={cx('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', tones[tone])}>{children}</span>
 }

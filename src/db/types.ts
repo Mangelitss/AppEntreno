@@ -7,7 +7,16 @@
 // mayor que el ultimo push, y los borrados son logicos para que se propaguen.
 // ---------------------------------------------------------------------------
 
+import type { CardioKind, PaceStyle } from '../lib/cardio'
+
 export type ID = string
+
+/** Propiedad libre que te inventas tu: "Altura asiento" = "4". */
+export interface ExerciseProp {
+  id: ID
+  name: string
+  value: string
+}
 
 export interface Syncable {
   id: ID
@@ -30,8 +39,30 @@ export interface Exercise extends Syncable {
   gif: string | null
   isCustom: 0 | 1
   favorite: 0 | 1
+  /** nombre en espanol para mostrar; si falta se usa `name` (el del dataset) */
+  alias?: string | null
   /** incremento manual en kg; si es null se deduce del equipamiento */
   incrementKg: number | null
+  /**
+   * Como se registra. 'reps' es lo normal (series, kg y RIR); 'cardio' cambia
+   * la ficha entera a duracion, distancia, kcal y pulsaciones.
+   */
+  tracking?: 'reps' | 'cardio'
+  cardioKind?: CardioKind | null
+  paceStyle?: PaceStyle | null
+
+  /** Tus propias anotaciones, visibles tambien al entrenar. */
+  props?: ExerciseProp[]
+  /** Imagen o gif propios en data URL, cuando subes un fichero. Mandan sobre los del dataset. */
+  imageData?: string | null
+  gifData?: string | null
+  /** Archivado: no se borra nada, solo deja de aparecer en buscadores y listas. */
+  archived?: 0 | 1
+  /**
+   * Campos del dataset que has cambiado a mano. Al reimportar el catalogo se
+   * usa para saber que no deberia pisarse sin avisarte.
+   */
+  editedFields?: string[]
 }
 
 /** Plantilla de entrenamiento. */
@@ -40,6 +71,8 @@ export interface Routine extends Syncable {
   notes: string
   order: number
   archived: 0 | 1
+  /** portada de la rutina: data URL de una foto subida, o un enlace */
+  imageData?: string | null
 }
 
 /** Un ejercicio dentro de una rutina. */
@@ -52,6 +85,8 @@ export interface RoutineItem extends Syncable {
   targetRepsMax: number
   restSeconds: number
   notes: string
+  /** solo en cardio: duracion objetivo, para estimar lo que dura la rutina */
+  targetDurationMin?: number | null
 }
 
 /** Que rutina toca cada dia. weekday: 0 = lunes ... 6 = domingo. */
@@ -72,6 +107,11 @@ export interface Workout extends Syncable {
   finishedAt: number | null
   notes: string
   dateKey: string // YYYY-MM-DD
+  /**
+   * Solo en entrenos registrados a posteriori: cuanto duro, segun tu.
+   * Al cerrarlo, finishedAt sale de aqui y no del reloj.
+   */
+  plannedDurationMs?: number | null
 }
 
 export interface WorkoutExercise extends Syncable {
@@ -84,6 +124,8 @@ export interface WorkoutExercise extends Syncable {
   targetRepsMax: number
   restSeconds: number
   notes: string
+  /** solo en cardio: duracion objetivo de la actividad */
+  targetDurationMin?: number | null
 }
 
 export type SetType = 'warmup' | 'normal' | 'failure' | 'drop'
@@ -100,6 +142,32 @@ export interface WorkoutSet extends Syncable {
   type: SetType
   done: 0 | 1
   completedAt: number | null
+  // --- solo en ejercicios de cardio ---
+  durationSec?: number | null
+  distanceKm?: number | null
+  kcal?: number | null
+  avgHr?: number | null
+  maxHr?: number | null
+}
+
+/**
+ * Datos que casi nunca cambian y no tiene sentido fechar.
+ *
+ * La altura no es una medida mas: si se guardara en cada registro habria que
+ * reescribirla siempre y acabarias con una grafica plana. Aqui vive una sola
+ * vez y sirve para calcular el IMC y el ratio cintura/altura de cualquier
+ * registro, incluidos los antiguos.
+ */
+export interface Profile extends Syncable {
+  id: 'profile'
+  /** como te llamas para ti y, el dia que haya amigos, para ellos */
+  displayName: string | null
+  /** data URL mientras no haya nube; despues, la URL en Supabase Storage */
+  avatarUrl: string | null
+  heightCm: number | null
+  sex: 'hombre' | 'mujer' | 'otro' | null
+  /** YYYY-MM-DD */
+  birthDate: string | null
 }
 
 /** Peso corporal y medidas. */
@@ -124,6 +192,24 @@ export interface ProgressionState extends Syncable {
   pendingWeightKg: number
   /** reps extra a sugerir (ejercicios de peso corporal) */
   pendingReps: number
+}
+
+/**
+ * Marca de por donde iba la sincronizacion.
+ *
+ * `ownerUid` es la pieza importante: si en este movil entra otra persona, sus
+ * datos no pueden mezclarse con los tuyos, asi que al detectar un dueno
+ * distinto se limpia la base local antes de bajar nada.
+ */
+export interface SyncState {
+  id: 'sync'
+  ownerUid: string | null
+  /** ultimo updatedAt propio ya enviado */
+  lastPushedAt: number
+  /** ultimo updatedAt remoto ya recibido */
+  lastPulledAt: number
+  lastSyncAt: number | null
+  lastError: string | null
 }
 
 export interface Settings {

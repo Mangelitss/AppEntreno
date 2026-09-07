@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
-  BodyEntry, Exercise, ProgressionState, Routine, RoutineItem,
-  ScheduleDay, Settings, Workout, WorkoutExercise, WorkoutSet
+  BodyEntry, Exercise, Profile, ProgressionState, Routine, RoutineItem,
+  ScheduleDay, Settings, SyncState, Workout, WorkoutExercise, WorkoutSet
 } from './types'
 
 export class AppEntrenoDB extends Dexie {
@@ -15,6 +15,8 @@ export class AppEntrenoDB extends Dexie {
   body!: Table<BodyEntry, string>
   progression!: Table<ProgressionState, string>
   settings!: Table<Settings, string>
+  profile!: Table<Profile, string>
+  syncState!: Table<SyncState, string>
 
   constructor() {
     super('appentreno')
@@ -30,6 +32,12 @@ export class AppEntrenoDB extends Dexie {
       progression: 'id, exerciseId, updatedAt',
       settings: 'id'
     })
+
+    // v2 anade el perfil corporal. Dexie migra solo y no toca lo que ya hubiera.
+    this.version(2).stores({ profile: 'id' })
+
+    // v3 anade la marca de sincronizacion.
+    this.version(3).stores({ syncState: 'id' })
   }
 }
 
@@ -53,6 +61,44 @@ export async function getSettings(): Promise<Settings> {
   if (s) return { ...DEFAULT_SETTINGS, ...s }
   await db.settings.put(DEFAULT_SETTINGS)
   return DEFAULT_SETTINGS
+}
+
+export const EMPTY_PROFILE: Profile = {
+  id: 'profile',
+  displayName: null,
+  avatarUrl: null,
+  heightCm: null,
+  sex: null,
+  birthDate: null,
+  updatedAt: 0,
+  deletedAt: null
+}
+
+export async function getProfile(): Promise<Profile> {
+  return (await db.profile.get('profile')) ?? EMPTY_PROFILE
+}
+
+export async function saveProfile(patch: Partial<Profile>): Promise<void> {
+  const current = await getProfile()
+  await db.profile.put({ ...current, ...patch, id: 'profile', updatedAt: Date.now() })
+}
+
+export const EMPTY_SYNC: SyncState = {
+  id: 'sync',
+  ownerUid: null,
+  lastPushedAt: 0,
+  lastPulledAt: 0,
+  lastSyncAt: null,
+  lastError: null
+}
+
+export async function getSyncState(): Promise<SyncState> {
+  return (await db.syncState.get('sync')) ?? EMPTY_SYNC
+}
+
+export async function saveSyncState(patch: Partial<SyncState>): Promise<void> {
+  const current = await getSyncState()
+  await db.syncState.put({ ...current, ...patch, id: 'sync' })
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {

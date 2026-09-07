@@ -1,26 +1,48 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { epley1RM, formatDateEs, formatDuration, formatKg, totalVolume } from '../lib/stats'
 import { effectiveSets } from '../lib/progression'
+import { displayName } from '../lib/muscles'
+import { formatCardioDuration } from '../lib/cardio'
+import { buildWeekMuscleData } from '../db/rank-data'
+import { computeMuscleRanks, weekKeyOf } from '../lib/ranks'
+import RankPanel from '../components/RankPanel'
 import LineChart, { type Point } from '../components/LineChart'
 import ExercisePicker from '../components/ExercisePicker'
 import { Button, Card, Empty, Pill, cx } from '../components/ui'
 import { PageHeader } from '../components/Layout'
 
-type Metric = '1rm' | 'peso' | 'volumen'
+type Metric = '1rm' | 'peso' | 'volumen' | 'duracion' | 'distancia' | 'kcal'
 
-const METRICS: { key: Metric; label: string }[] = [
+const STRENGTH_METRICS: { key: Metric; label: string }[] = [
   { key: '1rm', label: '1RM estimado' },
   { key: 'peso', label: 'Peso maximo' },
   { key: 'volumen', label: 'Volumen' }
 ]
 
+const CARDIO_METRICS: { key: Metric; label: string }[] = [
+  { key: 'duracion', label: 'Duracion' },
+  { key: 'distancia', label: 'Distancia' },
+  { key: 'kcal', label: 'Kcal' }
+]
+
 export default function Progress() {
-  const [exerciseId, setExerciseId] = useState<string | null>(null)
+  // Se puede entrar desde la ficha de un ejercicio con ?ejercicio=<id>.
+  const [params, setParams] = useSearchParams()
+  const [exerciseId, setExerciseId] = useState<string | null>(params.get('ejercicio'))
   const [metric, setMetric] = useState<Metric>('1rm')
   const [picking, setPicking] = useState(false)
-  const [tab, setTab] = useState<'ejercicio' | 'historial'>('ejercicio')
+  const [tab, setTab] = useState<'ejercicio' | 'rangos' | 'historial'>('ejercicio')
+
+  // Los rangos se recalculan del historial, no se guardan: corregir un entreno
+  // antiguo tambien los corrige.
+  const weekData = useLiveQuery(() => buildWeekMuscleData(), [], [])
+  const ranks = useMemo(
+    () => computeMuscleRanks(weekData ?? [], weekKeyOf(new Date())),
+    [weekData]
+  )
 
   const exercise = useLiveQuery(() => exerciseId ? db.exercises.get(exerciseId) : undefined, [exerciseId])
   const progression = useLiveQuery(() => exerciseId ? db.progression.get(exerciseId) : undefined, [exerciseId])
@@ -29,7 +51,10 @@ export default function Progress() {
   const series = useLiveQuery(async () => {
     if (!exerciseId) return []
     const links = (await db.workoutExercises.where('exerciseId').equals(exerciseId).toArray()).filter(l => !l.deletedAt)
-    const rows: { date: number; dateKey: string; top: number; best1RM: number; volume: number }[] = []
+    const rows: {
+      date: number; dateKey: string; top: number; best1RM: number; volume: number
+      minutes: number; km: number; kcal: number
+    }[] = []
 
     for (const link of links) {
       const workout = await db.workouts.get(link.workoutId)
@@ -43,7 +68,10 @@ export default function Progress() {
         dateKey: workout.dateKey,
         top: Math.max(...sets.map(s => s.weight)),
         best1RM: Math.max(...sets.map(s => epley1RM(s.weight, s.reps))),
-        volume: sets.reduce((a, s) => a + s.weight * s.reps, 0)
+        volume: sets.reduce((a, s) => a + s.weight * s.reps, 0),
+        minutes: sets.reduce((a, s) => a + (s.durationSec ?? 0), 0) / 60,
+        km: sets.reduce((a, s) => a + (s.distanceKm ?? 0), 0),
+        kcal: sets.reduce((a, s) => a + (s.kcal ?? 0), 0)
       })
     }
     return rows.sort((a, b) => a.date - b.date)
@@ -61,11 +89,30 @@ export default function Progress() {
     })))
   }, [], [])
 
-  const points: Point[] = useMemo(() => (series ?? []).map(r => ({
-    x: r.date,
-    y: Number((metric === '1rm' ? r.best1RM : metric === 'peso' ? r.top : r.volume).toFixed(1)),
-    label: formatDateEs(r.dateKey)
-  })), [series, metric])
+  const isCardio = exercise?.tracking === 'cardio'
+  const metrics = isCardio ? CARDIO_METRICS : STRENGTH_METRICS
+
+  // Si cambias de un ejercicio de fuerza a una actividad de cardio, la metrica
+  // que tenias elegida deja de existir: volvemos a la primera del grupo.
+  useEffect(() => {
+    if (!metrics.some(m => m.key === metric)) setMetric(metrics[0].key)
+  }, [isCardio])
+
+  const points: Point[] = useMemo(() => (series ?? []).map(r => {
+    const value =
+      metric === '1rm' ? r.best1RM
+        : metric === 'peso' ? r.top
+        : metric === 'volumen' ? r.volume
+        : metric === 'duracion' ? r.minutes
+        : metric === 'distancia' ? r.km
+        : r.kcal
+    return { x: r.date, y: Number(value.toFixed(1)), label: formatDateEs(r.dateKey) }
+  }), [series, metric])
+
+  const unit = metric === 'duracion' ? ' min'
+    : metric === 'distancia' ? ' km'
+    : metric === 'kcal' ? ' kcal'
+    : ' kg'
 
   const pr = useMemo(() => {
     if (!series?.length) return null
@@ -82,7 +129,7 @@ export default function Progress() {
 
       <div className="px-4 pb-8 md:px-8">
         <div className="mb-4 flex gap-1 rounded-xl bg-ink-900 p-1">
-          {(['ejercicio', 'historial'] as const).map(t => (
+          {(['ejercicio', 'rangos', 'historial'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -91,15 +138,17 @@ export default function Progress() {
                 tab === t ? 'bg-ink-800 text-ink-100' : 'text-ink-500'
               )}
             >
-              {t === 'ejercicio' ? 'Por ejercicio' : 'Historial'}
+              {t === 'ejercicio' ? 'Por ejercicio' : t === 'rangos' ? 'Rangos' : 'Historial'}
             </button>
           ))}
         </div>
 
-        {tab === 'ejercicio' ? (
+        {tab === 'rangos' ? (
+          <RankPanel ranks={ranks} />
+        ) : tab === 'ejercicio' ? (
           <div className="space-y-4">
             <Button variant="outline" className="w-full justify-between" onClick={() => setPicking(true)}>
-              <span className="truncate capitalize">{exercise?.name ?? 'Elegir ejercicio'}</span>
+              <span className="truncate capitalize">{exercise ? displayName(exercise) : 'Elegir ejercicio'}</span>
               <span className="text-ink-500">▾</span>
             </Button>
 
@@ -111,7 +160,7 @@ export default function Progress() {
               <>
                 <Card className="p-4">
                   <div className="mb-3 flex gap-1.5">
-                    {METRICS.map(m => (
+                    {metrics.map(m => (
                       <button
                         key={m.key}
                         onClick={() => setMetric(m.key)}
@@ -124,25 +173,48 @@ export default function Progress() {
                       </button>
                     ))}
                   </div>
-                  <LineChart points={points} unit={metric === 'volumen' ? ' kg' : ' kg'} />
+                  <LineChart points={points} unit={unit} />
                 </Card>
 
                 <div className="grid grid-cols-3 gap-2">
-                  <Card className="p-4 text-center">
-                    <p className="text-xl font-semibold">{formatKg(pr?.maxWeight ?? 0)}</p>
-                    <p className="text-xs text-ink-500">kg maximo</p>
-                  </Card>
-                  <Card className="p-4 text-center">
-                    <p className="text-xl font-semibold">{formatKg(Math.round((pr?.best1RM ?? 0) * 10) / 10)}</p>
-                    <p className="text-xs text-ink-500">1RM estimado</p>
-                  </Card>
-                  <Card className="p-4 text-center">
-                    <p className="text-xl font-semibold">{pr?.sessions ?? 0}</p>
-                    <p className="text-xs text-ink-500">sesiones</p>
-                  </Card>
+                  {isCardio ? (
+                    <>
+                      <Card className="p-4 text-center">
+                        <p className="text-xl font-semibold">
+                          {formatCardioDuration((series ?? []).reduce((a, r) => a + r.minutes, 0) * 60)}
+                        </p>
+                        <p className="text-xs text-ink-500">tiempo total</p>
+                      </Card>
+                      <Card className="p-4 text-center">
+                        <p className="text-xl font-semibold">
+                          {Math.round((series ?? []).reduce((a, r) => a + r.km, 0))}
+                        </p>
+                        <p className="text-xs text-ink-500">km acumulados</p>
+                      </Card>
+                      <Card className="p-4 text-center">
+                        <p className="text-xl font-semibold">{pr?.sessions ?? 0}</p>
+                        <p className="text-xs text-ink-500">sesiones</p>
+                      </Card>
+                    </>
+                  ) : (
+                    <>
+                      <Card className="p-4 text-center">
+                        <p className="text-xl font-semibold">{formatKg(pr?.maxWeight ?? 0)}</p>
+                        <p className="text-xs text-ink-500">kg maximo</p>
+                      </Card>
+                      <Card className="p-4 text-center">
+                        <p className="text-xl font-semibold">{formatKg(Math.round((pr?.best1RM ?? 0) * 10) / 10)}</p>
+                        <p className="text-xs text-ink-500">1RM estimado</p>
+                      </Card>
+                      <Card className="p-4 text-center">
+                        <p className="text-xl font-semibold">{pr?.sessions ?? 0}</p>
+                        <p className="text-xs text-ink-500">sesiones</p>
+                      </Card>
+                    </>
+                  )}
                 </div>
 
-                {progression && (
+                {!isCardio && progression && (
                   <Card className="p-4">
                     <p className="mb-2 text-sm text-ink-500">Estado de progresion</p>
                     <div className="flex flex-wrap items-center gap-2">
@@ -195,7 +267,11 @@ export default function Progress() {
       <ExercisePicker
         open={picking}
         onClose={() => setPicking(false)}
-        onPick={id => { setExerciseId(id); setPicking(false) }}
+        onPick={id => {
+          setExerciseId(id)
+          setParams(id ? { ejercicio: id } : {}, { replace: true })
+          setPicking(false)
+        }}
       />
     </div>
   )

@@ -61,11 +61,72 @@ const FALLBACK: RawExercise[] = [
 
 const CATALOG_VERSION = 1
 
+/** Campos que vienen del dataset y por tanto se pueden restaurar. */
+export type DatasetFields = Pick<
+  Exercise,
+  'name' | 'category' | 'equipment' | 'target' | 'secondaryMuscles' | 'instructions' | 'image' | 'gif'
+>
+
+let datasetCache: Map<string, RawExercise> | null = null
+
+async function loadDataset(): Promise<Map<string, RawExercise>> {
+  if (datasetCache) return datasetCache
+
+  let list: RawExercise[] = FALLBACK
+  try {
+    const res = await fetch('/data/exercises.json', { cache: 'force-cache' })
+    if (res.ok) {
+      const json = await res.json()
+      const parsed: RawExercise[] = Array.isArray(json) ? json : json.exercises
+      if (Array.isArray(parsed) && parsed.length > 0) list = parsed
+    }
+  } catch {
+    // sin red ni fichero: solo tendremos los del catalogo minimo
+  }
+
+  datasetCache = new Map(list.map(raw => [String(raw.id), raw]))
+  return datasetCache
+}
+
+/**
+ * Como venia un ejercicio en el dataset, para poder deshacer tus ediciones.
+ * Devuelve null si lo creaste tu o si no esta en el fichero descargado.
+ */
+export async function datasetOriginal(id: string): Promise<DatasetFields | null> {
+  const raw = (await loadDataset()).get(id)
+  if (!raw) return null
+
+  const { name, category, equipment, target, secondaryMuscles, instructions, image, gif } = toExercise(raw)
+  return { name, category, equipment, target, secondaryMuscles, instructions, image, gif }
+}
+
+/** Campos del dataset que se sustituyen al reimportar. */
+const DATASET_FIELDS = [
+  'name', 'category', 'equipment', 'target', 'secondaryMuscles', 'instructions', 'image', 'gif'
+] as const
+
+/** Cuantos ejercicios del catalogo tienen algun campo cambiado a mano. */
+export async function countEditedExercises(): Promise<number> {
+  const all = await db.exercises.toArray()
+  return all.filter(e => e.isCustom !== 1 && (e.editedFields?.length ?? 0) > 0).length
+}
+
+export interface CatalogOptions {
+  /** true = tus ediciones a mano no se pisan. Por defecto se conservan. */
+  preserveEdits?: boolean
+}
+
 /**
  * Importa el catalogo la primera vez (o cuando cambia de version).
- * Nunca toca los ejercicios que hayas creado tu ni tus overrides de incremento.
+ *
+ * Nunca toca los ejercicios que hayas creado tu. De los del dataset conserva
+ * siempre lo que es tuyo (favorito, incremento, anotaciones, imagenes propias,
+ * archivado) y, si preserveEdits, tambien los campos que hayas editado a mano.
  */
-export async function ensureCatalog(): Promise<{ count: number; source: 'dataset' | 'fallback' | 'cache' }> {
+export async function ensureCatalog(
+  options: CatalogOptions = {}
+): Promise<{ count: number; source: 'dataset' | 'fallback' | 'cache' }> {
+  const preserveEdits = options.preserveEdits ?? true
   const settings = await getSettings()
   const existing = await db.exercises.count()
 
@@ -90,15 +151,38 @@ export async function ensureCatalog(): Promise<{ count: number; source: 'dataset
     // sin red o sin fichero: seguimos con el catalogo minimo
   }
 
-  // Preservamos favoritos e incrementos personalizados de lo que ya hubiera.
-  const previous = await db.exercises.toArray()
-  const overrides = new Map(previous.map(e => [e.id, { favorite: e.favorite, incrementKg: e.incrementKg }]))
+  const previous = new Map((await db.exercises.toArray()).map(e => [e.id, e]))
 
   const rows = raws.map(raw => {
-    const ex = toExercise(raw)
-    const ov = overrides.get(ex.id)
-    if (ov) { ex.favorite = ov.favorite; ex.incrementKg = ov.incrementKg }
-    return ex
+    const fresh = toExercise(raw)
+    const old = previous.get(fresh.id)
+    if (!old) return fresh
+
+    // Lo que es tuyo no lo decide el dataset.
+    fresh.favorite = old.favorite
+    fresh.incrementKg = old.incrementKg
+    fresh.alias = old.alias ?? fresh.alias
+    fresh.props = old.props
+    fresh.imageData = old.imageData
+    fresh.gifData = old.gifData
+    fresh.archived = old.archived
+    fresh.tracking = old.tracking
+    fresh.cardioKind = old.cardioKind
+    fresh.paceStyle = old.paceStyle
+    fresh.editedFields = old.editedFields
+
+    if (preserveEdits) {
+      for (const field of old.editedFields ?? []) {
+        if ((DATASET_FIELDS as readonly string[]).includes(field)) {
+          // @ts-expect-error copia campo a campo por nombre
+          fresh[field] = old[field]
+        }
+      }
+    } else {
+      fresh.editedFields = []
+    }
+
+    return fresh
   })
 
   await db.exercises.bulkPut(rows)
