@@ -14,7 +14,7 @@ const TITLES: Record<Mode, string> = {
   recuperar: 'Recuperar contrasena'
 }
 
-export default function Auth() {
+export default function Auth({ onSkip }: { onSkip?: () => void } = {}) {
   const navigate = useNavigate()
   const auth = useAuth()
   const [mode, setMode] = useState<Mode>('entrar')
@@ -180,6 +180,20 @@ export default function Auth() {
             >
               Volver a iniciar sesion
             </button>
+          )}
+
+          {onSkip && (
+            <>
+              <div className="flex items-center gap-3">
+                <span className="h-px flex-1 bg-ink-800" />
+              </div>
+              <button
+                onClick={onSkip}
+                className="w-full text-center text-xs text-ink-500 hover:text-ink-300"
+              >
+                Continuar sin cuenta
+              </button>
+            </>
           )}
         </Card>
 

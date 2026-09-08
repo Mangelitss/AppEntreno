@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import Today from './pages/Today'
@@ -15,7 +15,7 @@ import Auth from './pages/Auth'
 import { ensureCatalog } from './db/catalog'
 import { ensureSchedule } from './db/schedule'
 import { ensureCardioCatalog } from './db/cardio-catalog'
-import { AuthProvider } from './components/AuthProvider'
+import { AuthProvider, useAuth } from './components/AuthProvider'
 import { SyncProvider } from './components/SyncProvider'
 
 /** El arranque se comparte entre montajes para que nunca corra dos veces a la vez. */
@@ -68,6 +68,7 @@ export default function App() {
   return (
     <AuthProvider>
       <SyncProvider>
+        <AuthGate>
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Today />} />
@@ -86,7 +87,35 @@ export default function App() {
             <Route path="*" element={<Today />} />
           </Route>
         </Routes>
+        </AuthGate>
       </SyncProvider>
     </AuthProvider>
   )
+}
+
+/**
+ * Puerta de entrada. Si hay nube configurada y todavia no has iniciado sesion,
+ * lo primero que ves es la pantalla de acceso: registrarte o entrar (tambien con
+ * Google). Se puede seguir sin cuenta, pero solo si lo eliges a proposito, y ese
+ * "sin cuenta" dura hasta que cierres la app: al volver a abrirla te pedira
+ * entrar de nuevo. Sin nube configurada no hay sesion posible y la app es 100%
+ * local, asi que no molesta con ninguna puerta.
+ */
+function AuthGate({ children }: { children: ReactNode }) {
+  const auth = useAuth()
+  const [skipped, setSkipped] = useState(false)
+
+  if (auth.status === 'cargando') {
+    return (
+      <div className="flex h-full items-center justify-center text-ink-500">
+        <span className="animate-pulse">Cargando…</span>
+      </div>
+    )
+  }
+
+  if (auth.status === 'invitado' && !skipped) {
+    return <Auth onSkip={() => setSkipped(true)} />
+  }
+
+  return <>{children}</>
 }
