@@ -34,7 +34,11 @@ export default function Progress() {
   const [exerciseId, setExerciseId] = useState<string | null>(params.get('ejercicio'))
   const [metric, setMetric] = useState<Metric>('1rm')
   const [picking, setPicking] = useState(false)
-  const [tab, setTab] = useState<'ejercicio' | 'rangos' | 'historial'>('ejercicio')
+  // Al abrir Progreso se ve primero Rangos, que aprovecha el ancho del escritorio.
+  // Salvo que llegues desde la ficha de un ejercicio (?ejercicio=): ahi quieres su grafica.
+  const [tab, setTab] = useState<'ejercicio' | 'rangos' | 'historial'>(
+    params.get('ejercicio') ? 'ejercicio' : 'rangos'
+  )
 
   // Los rangos se recalculan del historial, no se guardan: corregir un entreno
   // antiguo tambien los corrige.
@@ -124,11 +128,15 @@ export default function Progress() {
   }, [series])
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className={cx('mx-auto', tab === 'rangos' ? 'max-w-6xl' : 'max-w-3xl')}>
       <PageHeader title="Progreso" subtitle="Como evoluciona cada ejercicio y todo tu historial" />
 
       <div className="px-4 pb-8 md:px-8">
-        <div className="mb-4 flex gap-1 rounded-xl bg-ink-900 p-1">
+        <div className={cx(
+          'mb-4 flex gap-1 rounded-xl bg-ink-900 p-1',
+          // En rangos la pagina va ancha, pero el selector no tiene por que estirarse.
+          tab === 'rangos' && 'md:max-w-lg'
+        )}>
           {(['ejercicio', 'rangos', 'historial'] as const).map(t => (
             <button
               key={t}

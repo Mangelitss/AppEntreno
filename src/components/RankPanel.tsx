@@ -103,8 +103,10 @@ export default function RankPanel({ ranks }: { ranks: MuscleRank[] }) {
   const detail = selected ? byMuscle.get(selected) : null
 
   return (
-    <div className="space-y-4">
-      <Card className="p-4">
+    // En escritorio: mapa a la izquierda (fijo al hacer scroll) y grupos a la
+    // derecha, para aprovechar el ancho. En movil se apilan como siempre.
+    <div className="lg:grid lg:grid-cols-5 lg:items-start lg:gap-6">
+      <Card className="mb-4 p-4 lg:col-span-2 lg:mb-0 lg:sticky lg:top-4">
         <BodyMap colors={colors} onPick={m => setSelected(s => (s === m ? null : m))} selected={selected} />
 
         {detail ? (
@@ -127,7 +129,8 @@ export default function RankPanel({ ranks }: { ranks: MuscleRank[] }) {
         )}
       </Card>
 
-      <div className="space-y-2">
+      <div className="lg:col-span-3">
+        <div className="space-y-2">
         {groups.map(group => {
           const isOpen = open === group.id
           return (
@@ -202,15 +205,16 @@ export default function RankPanel({ ranks }: { ranks: MuscleRank[] }) {
             </div>
           )
         })}
-      </div>
+        </div>
 
-      <p className="px-1 text-[11px] leading-relaxed text-ink-500">
-        Los rangos miden progreso acumulado, no fuerza maxima: los puntos van por mejora
-        relativa, asi que subir el curl de 40 a 42 kg vale lo mismo que la sentadilla de 100 a
-        105. Cada semana suman el progreso sobre tu propia referencia, la constancia y las
-        series cerca del fallo. Solo se baja rindiendo por debajo de lo que ya habias
-        demostrado, o dejando de entrenar ese musculo.
-      </p>
+        <p className="mt-4 px-1 text-[11px] leading-relaxed text-ink-500">
+          Los rangos miden progreso acumulado, no fuerza maxima: los puntos van por mejora
+          relativa, asi que subir el curl de 40 a 42 kg vale lo mismo que la sentadilla de 100 a
+          105. Cada semana suman el progreso sobre tu propia referencia, la constancia y las
+          series cerca del fallo. Solo se baja rindiendo por debajo de lo que ya habias
+          demostrado, o dejando de entrenar ese musculo.
+        </p>
+      </div>
     </div>
   )
 }
