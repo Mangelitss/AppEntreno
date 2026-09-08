@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
-import { epley1RM, formatDateEs, formatDuration, formatKg, totalVolume } from '../lib/stats'
+import { epley1RM, formatDateEs, formatKg } from '../lib/stats'
 import { effectiveSets } from '../lib/progression'
 import { displayName } from '../lib/muscles'
 import { formatCardioDuration } from '../lib/cardio'
 import { buildWeekMuscleData } from '../db/rank-data'
 import { computeMuscleRanks, weekKeyOf } from '../lib/ranks'
 import RankPanel from '../components/RankPanel'
+import HistoryPanel from '../components/HistoryPanel'
 import LineChart, { type Point } from '../components/LineChart'
 import ExercisePicker from '../components/ExercisePicker'
 import { Button, Card, Empty, Pill, cx } from '../components/ui'
@@ -81,16 +82,33 @@ export default function Progress() {
     return rows.sort((a, b) => a.date - b.date)
   }, [exerciseId], [])
 
+  // El historial completo alimenta el calendario, asi que se carga entero. Para
+  // no lanzar una consulta por entreno, se leen series y ejercicios de una vez
+  // y se agrupan en memoria.
   const history = useLiveQuery(async () => {
     const workouts = (await db.workouts.toArray())
       .filter(w => !w.deletedAt && w.finishedAt)
       .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))
-      .slice(0, 40)
-    return Promise.all(workouts.map(async w => ({
+
+    const allSets = (await db.sets.toArray()).filter(s => !s.deletedAt)
+    const setsByWorkout = new Map<string, typeof allSets>()
+    for (const s of allSets) {
+      const arr = setsByWorkout.get(s.workoutId)
+      if (arr) arr.push(s); else setsByWorkout.set(s.workoutId, [s])
+    }
+
+    const allLinks = (await db.workoutExercises.toArray()).filter(l => !l.deletedAt)
+    const linksByWorkout = new Map<string, typeof allLinks>()
+    for (const l of allLinks) {
+      const arr = linksByWorkout.get(l.workoutId)
+      if (arr) arr.push(l); else linksByWorkout.set(l.workoutId, [l])
+    }
+
+    return workouts.map(w => ({
       workout: w,
-      sets: (await db.sets.where('workoutId').equals(w.id).toArray()).filter(s => !s.deletedAt),
-      exercises: (await db.workoutExercises.where('workoutId').equals(w.id).toArray()).filter(l => !l.deletedAt)
-    })))
+      sets: setsByWorkout.get(w.id) ?? [],
+      exercises: (linksByWorkout.get(w.id) ?? []).sort((a, b) => a.order - b.order)
+    }))
   }, [], [])
 
   const isCardio = exercise?.tracking === 'cardio'
@@ -128,14 +146,14 @@ export default function Progress() {
   }, [series])
 
   return (
-    <div className={cx('mx-auto', tab === 'rangos' ? 'max-w-6xl' : 'max-w-3xl')}>
+    <div className={cx('mx-auto', tab === 'ejercicio' ? 'max-w-3xl' : 'max-w-6xl')}>
       <PageHeader title="Progreso" subtitle="Como evoluciona cada ejercicio y todo tu historial" />
 
       <div className="px-4 pb-8 md:px-8">
         <div className={cx(
           'mb-4 flex gap-1 rounded-xl bg-ink-900 p-1',
-          // En rangos la pagina va ancha, pero el selector no tiene por que estirarse.
-          tab === 'rangos' && 'md:max-w-lg'
+          // Rangos e Historial van a lo ancho, pero el selector no tiene por que estirarse.
+          tab !== 'ejercicio' && 'md:max-w-lg'
         )}>
           {(['ejercicio', 'rangos', 'historial'] as const).map(t => (
             <button
@@ -245,30 +263,7 @@ export default function Progress() {
             )}
           </div>
         ) : (
-          <div className="space-y-2">
-            {(history ?? []).length === 0 ? (
-              <Empty title="Historial vacio" hint="Aqui se acumulan todos los entrenos que termines." />
-            ) : (history ?? []).map(({ workout, sets, exercises }) => (
-              <Card key={workout.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{workout.routineName}</p>
-                    <p className="text-sm text-ink-500">{formatDateEs(workout.dateKey)}</p>
-                    <p className="mt-1 truncate text-xs capitalize text-ink-500">
-                      {exercises.map(e => e.exerciseName).join(' · ')}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-mono text-sm">{Math.round(totalVolume(sets)).toLocaleString('es-ES')} kg</p>
-                    <p className="text-xs text-ink-500">
-                      {sets.filter(s => s.done).length} series
-                      {workout.finishedAt && ` · ${formatDuration(workout.finishedAt - workout.startedAt)}`}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+          <HistoryPanel items={history ?? []} />
         )}
       </div>
 
