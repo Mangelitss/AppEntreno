@@ -57,6 +57,42 @@ export async function signIn(email: string, password: string): Promise<AuthResul
   return attempt(async () => { await signInWithEmailAndPassword(auth, email.trim(), password) })
 }
 
+/**
+ * Entra con la cuenta de Google.
+ *
+ * Se intenta primero con una ventana emergente, que es lo mas comodo en el
+ * ordenador. Si el navegador la bloquea o no la soporta (habitual en algunos
+ * moviles y dentro de la PWA), se cae a una redireccion: la app se recarga y al
+ * volver ya estas dentro, asi que aqui no hay nada mas que esperar.
+ */
+export async function signInWithGoogle(): Promise<AuthResult> {
+  const auth = await getFirebaseAuth()
+  if (!auth) return { ok: false, error: 'La nube no esta configurada' }
+
+  const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth')
+  const provider = new GoogleAuthProvider()
+
+  try {
+    await signInWithPopup(auth, provider)
+    return { ok: true }
+  } catch (error) {
+    const code = error instanceof Error ? ((error as { code?: string }).code ?? error.message) : String(error)
+
+    // El usuario cerro la ventana o abrio otra: no es un fallo que mostrar.
+    if (/popup-closed-by-user|cancelled-popup-request|user-cancelled/i.test(code)) {
+      return { ok: false }
+    }
+
+    // Sin soporte de popup o bloqueada: probamos por redireccion. Si arranca,
+    // la pagina se va y no se llega a devolver nada util.
+    if (/popup-blocked|operation-not-supported|web-storage-unsupported|missing-or-invalid-nonce/i.test(code)) {
+      return attempt(async () => { await signInWithRedirect(auth, provider) })
+    }
+
+    return { ok: false, error: authErrorEs(code) }
+  }
+}
+
 export async function signOut(): Promise<void> {
   const auth = await getFirebaseAuth()
   if (!auth) return

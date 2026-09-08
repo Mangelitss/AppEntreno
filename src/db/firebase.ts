@@ -79,7 +79,7 @@ export function authErrorEs(raw: string): string {
     return 'Por seguridad, vuelve a iniciar sesion antes de cambiar esto'
   }
   if (code.includes('operation-not-allowed')) {
-    return 'Falta activar el acceso por email y contrasena en la consola de Firebase'
+    return 'Falta activar este metodo de acceso en la consola de Firebase: Authentication > Sign-in method'
   }
   // Pasa cuando el proyecto existe pero nadie ha pulsado "Comenzar" en
   // Authentication, asi que el servicio ni siquiera esta creado.
@@ -91,6 +91,12 @@ export function authErrorEs(raw: string): string {
   }
   if (code.includes('unauthorized-domain')) {
     return 'Este dominio no esta autorizado en Authentication > Settings > Dominios autorizados'
+  }
+  if (code.includes('account-exists-with-different-credential')) {
+    return 'Ya tienes una cuenta con ese email creada con otro metodo. Entra con el que usaste la primera vez'
+  }
+  if (code.includes('popup-blocked')) {
+    return 'El navegador ha bloqueado la ventana de Google. Permite las ventanas emergentes y vuelve a intentarlo'
   }
   return raw
 }
