@@ -168,6 +168,27 @@ export interface Profile extends Syncable {
   sex: 'hombre' | 'mujer' | 'otro' | null
   /** YYYY-MM-DD */
   birthDate: string | null
+  /** objetivo de peso activo, si lo hay */
+  goal?: WeightGoal | null
+}
+
+/**
+ * Objetivo de peso con plazo opcional.
+ *
+ * La direccion (perder, ganar o mantener) sale sola de comparar el peso
+ * objetivo con el de partida, asi que no se guarda aparte. El peso de partida
+ * se congela al fijar el objetivo para que el progreso se mida siempre contra
+ * el mismo punto, aunque despues anotes pesos nuevos.
+ */
+export interface WeightGoal {
+  targetWeightKg: number
+  /** peso el dia que se fijo el objetivo */
+  startWeightKg: number
+  /** YYYY-MM-DD en que se fijo */
+  startDateKey: string
+  /** fecha limite opcional, YYYY-MM-DD */
+  targetDateKey: string | null
+  createdAt: number
 }
 
 /** Peso corporal y medidas. */

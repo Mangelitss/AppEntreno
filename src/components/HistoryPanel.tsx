@@ -120,9 +120,9 @@ export default function HistoryPanel({ items }: { items: HistoryItem[] }) {
     : `${cursor.getFullYear()}`
 
   return (
-    <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
-      {/* Columna izquierda: calendario / mapa de calor */}
-      <div className="mb-4 space-y-4 lg:mb-0 lg:sticky lg:top-4">
+    <div className="lg:grid lg:grid-cols-5 lg:items-start lg:gap-6">
+      {/* Columna izquierda: calendario / mapa de calor (mas ancha para que quepa el ano) */}
+      <div className="mb-4 space-y-4 lg:col-span-3 lg:mb-0 lg:sticky lg:top-4">
         <Card className="p-4">
           <div className="mb-4 flex items-center justify-between gap-2">
             <button
@@ -177,7 +177,7 @@ export default function HistoryPanel({ items }: { items: HistoryItem[] }) {
       </div>
 
       {/* Columna derecha: selector + lista */}
-      <div>
+      <div className="lg:col-span-2">
         <div className="mb-3 flex gap-1 rounded-xl bg-ink-900 p-1">
           {VIEWS.map(v => (
             <button
@@ -317,68 +317,70 @@ function Heatmap({ start, end, countByDay, todayKey }: {
     return cols
   }, [start, end])
 
+  // Las columnas se reparten el ancho disponible (minmax(0,1fr)), asi que el ano
+  // entero cabe sin scroll horizontal por estrecha que sea la tarjeta.
+  const cols = { gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }
+
   return (
-    <div className="overflow-x-auto pb-1">
-      <div className="inline-flex flex-col gap-1">
-        {/* Etiquetas de mes, alineadas con la columna donde empieza cada uno */}
-        <div className="flex pl-[18px]">
-          <div className="flex gap-[3px]">
-            {weeks.map((col, i) => {
-              const prev = weeks[i - 1]?.[0]
-              const showLabel = i === 0 || (prev && col[0].getMonth() !== prev.getMonth())
-              return (
-                <div key={i} className="relative h-3 w-3">
-                  {showLabel && (
-                    <span className="absolute left-0 top-0 whitespace-nowrap text-[9px] leading-3 text-ink-500">
-                      {MESES[col[0].getMonth()]}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+    <div>
+      {/* Etiquetas de mes, alineadas con la columna donde empieza cada uno */}
+      <div className="mb-1 grid gap-[2px] pl-[18px]" style={cols}>
+        {weeks.map((col, i) => {
+          const prev = weeks[i - 1]?.[0]
+          const showLabel = i === 0 || (prev && col[0].getMonth() !== prev.getMonth())
+          return (
+            <div key={i} className="relative h-3">
+              {showLabel && (
+                <span className="absolute left-0 top-0 whitespace-nowrap text-[9px] leading-3 text-ink-500">
+                  {MESES[col[0].getMonth()]}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex gap-1">
+        {/* Etiquetas L / X / V, repartidas a lo alto para cuadrar con las 7 filas */}
+        <div className="flex w-3.5 shrink-0 flex-col gap-[2px]">
+          {DIAS.map((d, i) => (
+            <span key={d} className="flex flex-1 items-center text-[8px] leading-none text-ink-500">
+              {i % 2 === 0 ? d : ''}
+            </span>
+          ))}
         </div>
 
-        <div className="flex gap-1">
-          {/* Etiquetas L / X / V a la izquierda */}
-          <div className="flex w-[14px] flex-col gap-[3px]">
-            {DIAS.map((d, i) => (
-              <span key={d} className="h-3 text-[9px] leading-3 text-ink-500">{i % 2 === 0 ? d : ''}</span>
-            ))}
-          </div>
-
-          <div className="flex gap-[3px]">
-            {weeks.map((col, i) => (
-              <div key={i} className="flex flex-col gap-[3px]">
-                {col.map(d => {
-                  const key = dateKey(d)
-                  const future = key > todayKey
-                  const count = countByDay.get(key) ?? 0
-                  const lv = level(count)
-                  return (
-                    <div
-                      key={key}
-                      title={future ? undefined : `${formatDateEs(key)}: ${count} ${count === 1 ? 'entreno' : 'entrenos'}`}
-                      className={cx('h-3 w-3 rounded-sm', future ? 'bg-ink-900' : lv.className)}
-                      style={future ? undefined : lv.style}
-                    />
-                  )
-                })}
-              </div>
-            ))}
-          </div>
+        <div className="grid flex-1 gap-[2px]" style={cols}>
+          {weeks.map((col, i) => (
+            <div key={i} className="flex flex-col gap-[2px]">
+              {col.map(d => {
+                const key = dateKey(d)
+                const future = key > todayKey
+                const count = countByDay.get(key) ?? 0
+                const lv = level(count)
+                return (
+                  <div
+                    key={key}
+                    title={future ? undefined : `${formatDateEs(key)}: ${count} ${count === 1 ? 'entreno' : 'entrenos'}`}
+                    className={cx('aspect-square w-full rounded-[2px]', future ? 'bg-ink-900' : lv.className)}
+                    style={future ? undefined : lv.style}
+                  />
+                )
+              })}
+            </div>
+          ))}
         </div>
+      </div>
 
-        {/* Leyenda */}
-        <div className="mt-1 flex items-center justify-end gap-1 text-[9px] text-ink-500">
-          <span>Menos</span>
-          <span className="h-3 w-3 rounded-sm bg-ink-850" />
-          <span className="h-3 w-3 rounded-sm bg-accent" style={{ opacity: 0.4 }} />
-          <span className="h-3 w-3 rounded-sm bg-accent" style={{ opacity: 0.65 }} />
-          <span className="h-3 w-3 rounded-sm bg-accent" style={{ opacity: 0.85 }} />
-          <span className="h-3 w-3 rounded-sm bg-accent" />
-          <span>Más</span>
-        </div>
+      {/* Leyenda */}
+      <div className="mt-2 flex items-center justify-end gap-1 text-[9px] text-ink-500">
+        <span>Menos</span>
+        <span className="h-2.5 w-2.5 rounded-sm bg-ink-850" />
+        <span className="h-2.5 w-2.5 rounded-sm bg-accent" style={{ opacity: 0.4 }} />
+        <span className="h-2.5 w-2.5 rounded-sm bg-accent" style={{ opacity: 0.65 }} />
+        <span className="h-2.5 w-2.5 rounded-sm bg-accent" style={{ opacity: 0.85 }} />
+        <span className="h-2.5 w-2.5 rounded-sm bg-accent" />
+        <span>Más</span>
       </div>
     </div>
   )

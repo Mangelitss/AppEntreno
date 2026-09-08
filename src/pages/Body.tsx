@@ -7,6 +7,7 @@ import { formatDateEs, formatKg } from '../lib/stats'
 import {
   ageFrom, bmi, bmiBand, composition, formatRatio, waistToHeight, waistToHeightBand
 } from '../lib/body'
+import { DIRECTION_LABEL, goalDirection, goalSeries, goalStats } from '../lib/goal'
 import LineChart, { type Point } from '../components/LineChart'
 import { PageHeader } from '../components/Layout'
 import { Button, Card, Empty, Input, Label, Pill, Sheet } from '../components/ui'
@@ -49,6 +50,7 @@ export default function Body() {
   const [form, setForm] = useState({ dateKey: dateKey(), weight: '', fat: '', notes: '' })
   const [measures, setMeasures] = useState<Record<string, string>>({})
   const [profileForm, setProfileForm] = useState({ height: '', sex: '', birthDate: '' })
+  const [searchDate, setSearchDate] = useState('')
 
   const entries = useLiveQuery(
     async () => (await db.body.toArray()).filter(b => !b.deletedAt).sort((a, b) => a.dateKey.localeCompare(b.dateKey)),
@@ -74,6 +76,32 @@ export default function Body() {
   const ratio = waistToHeight(latest?.measurements?.cintura ?? null, height)
   const comp = composition(latest?.weightKg ?? null, latest?.bodyFat ?? null, height)
   const hasMetrics = imc !== null || ratio !== null || comp !== null
+
+  // El objetivo se define en Progreso; aqui solo se refleja.
+  const goal = profile?.goal ?? null
+  const goalStat = goal ? goalStats(goal, entries ?? [], dateKey()) : null
+  const goalPercentPoints: Point[] = useMemo(
+    () => goal
+      ? goalSeries(goal, entries ?? []).map(p => ({
+          x: new Date(p.dateKey).getTime(), y: Number(p.percent.toFixed(1)), label: formatDateEs(p.dateKey)
+        }))
+      : [],
+    [goal, entries]
+  )
+
+  // Buscador por fecha: si no hay registro justo ese dia, se muestra el mas cercano.
+  const search = useMemo(() => {
+    const all = (entries ?? []).slice().reverse() // del mas nuevo al mas viejo
+    if (!searchDate) return { list: all, note: null as string | null }
+    const exact = all.filter(e => e.dateKey === searchDate)
+    if (exact.length) return { list: exact, note: null }
+    const before = all.find(e => e.dateKey <= searchDate)
+    if (before) return { list: [before], note: `No hay registro del ${formatDateEs(searchDate)}; te muestro el más cercano.` }
+    const after = [...all].reverse().find(e => e.dateKey >= searchDate)
+    return after
+      ? { list: [after], note: `No hay registro del ${formatDateEs(searchDate)}; te muestro el más cercano.` }
+      : { list: [], note: 'Sin registros para esa fecha.' }
+  }, [entries, searchDate])
 
   function openForm() {
     const today = (entries ?? []).find(e => e.dateKey === dateKey())
@@ -129,110 +157,157 @@ export default function Body() {
   ].filter(Boolean)
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl lg:max-w-6xl">
       <PageHeader
         title="Medidas"
         subtitle="Tu perfil, el peso y los contornos"
         action={<Button variant="primary" onClick={openForm}>Anotar</Button>}
       />
 
-      <div className="space-y-4 px-4 pb-8 md:px-8">
-        {/* Datos que no cambian de una semana a otra, y que hacen falta para el resto. */}
-        <Card className="flex items-center justify-between gap-3 p-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Perfil</p>
-            <p className="mt-0.5 truncate text-sm text-ink-500">
-              {profileSummary.length ? profileSummary.join(' · ') : 'Sin datos todavia'}
-            </p>
-            {!height && (
-              <p className="mt-1 text-[11px] text-amber-300">
-                Pon tu altura y apareceran el IMC y el ratio cintura/altura
-              </p>
-            )}
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)}>Editar</Button>
-        </Card>
-
-        {hasMetrics && (
-          <div className="grid grid-cols-2 gap-2">
-            {imc !== null && (
-              <Metric
-                value={String(imc)} label="IMC" band={bmiBand(imc)}
-                hint="Con bastante musculo puede marcar sobrepeso siendo falso"
-              />
-            )}
-            {ratio !== null && (
-              <Metric
-                value={formatRatio(ratio)} label="Cintura / altura" band={waistToHeightBand(ratio)}
-                hint="Por debajo de 0,50 se considera saludable"
-              />
-            )}
-            {comp && (
-              <>
-                <Metric value={formatKg(comp.leanKg)} unit="kg" label="Masa magra" />
-                <Metric value={formatKg(comp.fatKg)} unit="kg" label="Masa grasa" />
-              </>
-            )}
-          </div>
-        )}
-
-        {points.length > 0 && (
-          <Card className="p-4">
-            <div className="mb-3 flex items-baseline justify-between">
-              <div>
-                <p className="text-3xl font-semibold">
-                  {formatKg(latest?.weightKg ?? 0)} <span className="text-base text-ink-500">kg</span>
+      <div className="px-4 pb-8 md:px-8">
+        <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
+          {/* Izquierda: perfil, graficas y metricas */}
+          <div className="mb-4 space-y-4 lg:mb-0">
+            {/* Datos que no cambian de una semana a otra, y que hacen falta para el resto. */}
+            <Card className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Perfil</p>
+                <p className="mt-0.5 truncate text-sm text-ink-500">
+                  {profileSummary.length ? profileSummary.join(' · ') : 'Sin datos todavia'}
                 </p>
-                <p className="text-xs text-ink-500">
-                  Ultimo registro · {latest && formatDateEs(latest.dateKey)}
-                </p>
-              </div>
-              {first && latest && first.weightKg !== null && latest.weightKg !== null && (
-                <p className="text-sm text-ink-500">
-                  {latest.weightKg - first.weightKg >= 0 ? '+' : ''}
-                  {formatKg(Number((latest.weightKg - first.weightKg).toFixed(1)))} kg desde el inicio
-                </p>
-              )}
-            </div>
-            <LineChart points={points} unit=" kg" />
-          </Card>
-        )}
-
-        {(entries ?? []).length === 0 ? (
-          <Empty
-            title="Sin registros todavia"
-            hint="Anota tu peso cada semana mas o menos: con 3 o 4 puntos la grafica ya dice algo."
-            action={<Button variant="primary" onClick={openForm}>Anotar el primero</Button>}
-          />
-        ) : (
-          <div className="space-y-2">
-            {(entries ?? []).slice().reverse().map(entry => (
-              <Card key={entry.id} className="flex items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {entry.weightKg !== null ? `${formatKg(entry.weightKg)} kg` : 'Sin peso'}
-                    {entry.bodyFat !== null && (
-                      <span className="ml-2 text-sm text-ink-500">{entry.bodyFat}% grasa</span>
-                    )}
+                {!height && (
+                  <p className="mt-1 text-[11px] text-amber-300">
+                    Pon tu altura y apareceran el IMC y el ratio cintura/altura
                   </p>
-                  <p className="text-sm text-ink-500">{formatDateEs(entry.dateKey)}</p>
-                  {Object.keys(entry.measurements).length > 0 && (
-                    <p className="mt-1 text-xs text-ink-500">
-                      {Object.entries(entry.measurements).map(([k, v]) => `${k} ${v}cm`).join(' · ')}
+                )}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)}>Editar</Button>
+            </Card>
+
+            {points.length > 0 && (
+              <Card className="p-4">
+                <div className="mb-3 flex items-baseline justify-between">
+                  <div>
+                    <p className="text-3xl font-semibold">
+                      {formatKg(latest?.weightKg ?? 0)} <span className="text-base text-ink-500">kg</span>
+                    </p>
+                    <p className="text-xs text-ink-500">
+                      Ultimo registro · {latest && formatDateEs(latest.dateKey)}
+                    </p>
+                  </div>
+                  {first && latest && first.weightKg !== null && latest.weightKg !== null && (
+                    <p className="text-sm text-ink-500">
+                      {latest.weightKg - first.weightKg >= 0 ? '+' : ''}
+                      {formatKg(Number((latest.weightKg - first.weightKg).toFixed(1)))} kg desde el inicio
                     </p>
                   )}
-                  {entry.notes && <p className="mt-1 text-xs italic text-ink-500">{entry.notes}</p>}
                 </div>
-                <Button
-                  variant="ghost" size="sm" className="text-red-300"
-                  onClick={() => void softDelete('body', entry.id)}
-                >
-                  ✕
-                </Button>
+                <LineChart points={points} unit=" kg" />
               </Card>
-            ))}
+            )}
+
+            {/* Progreso al objetivo, que se fija en Progreso › Objetivo. */}
+            {goal && goalStat && (
+              <Card className="p-4">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Progreso al objetivo</p>
+                    <p className="truncate text-xs text-ink-500">
+                      {DIRECTION_LABEL[goalDirection(goal)]} · meta {formatKg(goal.targetWeightKg)} kg
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-3xl font-semibold text-accent">{Math.round(goalStat.percent)}%</p>
+                </div>
+                {goalPercentPoints.length > 1 ? (
+                  <LineChart points={goalPercentPoints} unit=" %" />
+                ) : (
+                  <p className="py-6 text-center text-sm text-ink-500">
+                    Con un par de pesos más verás aquí la curva de avance.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-ink-500">Define y ajusta el objetivo en Progreso › Objetivo.</p>
+              </Card>
+            )}
+
+            {hasMetrics && (
+              <div className="grid grid-cols-2 gap-2">
+                {imc !== null && (
+                  <Metric
+                    value={String(imc)} label="IMC" band={bmiBand(imc)}
+                    hint="Con bastante musculo puede marcar sobrepeso siendo falso"
+                  />
+                )}
+                {ratio !== null && (
+                  <Metric
+                    value={formatRatio(ratio)} label="Cintura / altura" band={waistToHeightBand(ratio)}
+                    hint="Por debajo de 0,50 se considera saludable"
+                  />
+                )}
+                {comp && (
+                  <>
+                    <Metric value={formatKg(comp.leanKg)} unit="kg" label="Masa magra" />
+                    <Metric value={formatKg(comp.fatKg)} unit="kg" label="Masa grasa" />
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Derecha: buscador de fecha + historial */}
+          <div className="space-y-3">
+            <div>
+              <Label>Buscar por fecha</Label>
+              <div className="mt-1 flex items-center gap-2">
+                <Input
+                  type="date" value={searchDate} className="w-full"
+                  onChange={e => setSearchDate(e.target.value)}
+                />
+                {searchDate && (
+                  <Button variant="ghost" size="sm" onClick={() => setSearchDate('')} aria-label="Limpiar búsqueda">✕</Button>
+                )}
+              </div>
+            </div>
+
+            {(entries ?? []).length === 0 ? (
+              <Empty
+                title="Sin registros todavia"
+                hint="Anota tu peso cada semana mas o menos: con 3 o 4 puntos la grafica ya dice algo."
+                action={<Button variant="primary" onClick={openForm}>Anotar el primero</Button>}
+              />
+            ) : (
+              <div className="space-y-2 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-1">
+                {search.note && <p className="px-1 text-xs text-amber-300">{search.note}</p>}
+                {search.list.length === 0 ? (
+                  <p className="px-1 py-6 text-center text-sm text-ink-500">Nada para esa fecha.</p>
+                ) : search.list.map(entry => (
+                  <Card key={entry.id} className="flex items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        {entry.weightKg !== null ? `${formatKg(entry.weightKg)} kg` : 'Sin peso'}
+                        {entry.bodyFat !== null && (
+                          <span className="ml-2 text-sm text-ink-500">{entry.bodyFat}% grasa</span>
+                        )}
+                      </p>
+                      <p className="text-sm text-ink-500">{formatDateEs(entry.dateKey)}</p>
+                      {Object.keys(entry.measurements).length > 0 && (
+                        <p className="mt-1 text-xs text-ink-500">
+                          {Object.entries(entry.measurements).map(([k, v]) => `${k} ${v}cm`).join(' · ')}
+                        </p>
+                      )}
+                      {entry.notes && <p className="mt-1 text-xs italic text-ink-500">{entry.notes}</p>}
+                    </div>
+                    <Button
+                      variant="ghost" size="sm" className="text-red-300"
+                      onClick={() => void softDelete('body', entry.id)}
+                    >
+                      ✕
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <Sheet open={profileOpen} onClose={() => setProfileOpen(false)} title="Tu perfil">

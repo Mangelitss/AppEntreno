@@ -10,6 +10,7 @@ import { buildWeekMuscleData } from '../db/rank-data'
 import { computeMuscleRanks, weekKeyOf } from '../lib/ranks'
 import RankPanel from '../components/RankPanel'
 import HistoryPanel from '../components/HistoryPanel'
+import GoalPanel from '../components/GoalPanel'
 import LineChart, { type Point } from '../components/LineChart'
 import ExercisePicker from '../components/ExercisePicker'
 import { Button, Card, Empty, Pill, cx } from '../components/ui'
@@ -37,7 +38,7 @@ export default function Progress() {
   const [picking, setPicking] = useState(false)
   // Al abrir Progreso se ve primero Rangos, que aprovecha el ancho del escritorio.
   // Salvo que llegues desde la ficha de un ejercicio (?ejercicio=): ahi quieres su grafica.
-  const [tab, setTab] = useState<'ejercicio' | 'rangos' | 'historial'>(
+  const [tab, setTab] = useState<'ejercicio' | 'rangos' | 'objetivo' | 'historial'>(
     params.get('ejercicio') ? 'ejercicio' : 'rangos'
   )
 
@@ -152,10 +153,10 @@ export default function Progress() {
       <div className="px-4 pb-8 md:px-8">
         <div className={cx(
           'mb-4 flex gap-1 rounded-xl bg-ink-900 p-1',
-          // Rangos e Historial van a lo ancho, pero el selector no tiene por que estirarse.
-          tab !== 'ejercicio' && 'md:max-w-lg'
+          // Rangos, Objetivo e Historial van a lo ancho, pero el selector no tiene por que estirarse.
+          tab !== 'ejercicio' && 'md:max-w-xl'
         )}>
-          {(['ejercicio', 'rangos', 'historial'] as const).map(t => (
+          {(['ejercicio', 'rangos', 'objetivo', 'historial'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -164,7 +165,7 @@ export default function Progress() {
                 tab === t ? 'bg-ink-800 text-ink-100' : 'text-ink-500'
               )}
             >
-              {t === 'ejercicio' ? 'Por ejercicio' : t === 'rangos' ? 'Rangos' : 'Historial'}
+              {t === 'ejercicio' ? 'Por ejercicio' : t === 'rangos' ? 'Rangos' : t === 'objetivo' ? 'Objetivo' : 'Historial'}
             </button>
           ))}
         </div>
@@ -262,8 +263,10 @@ export default function Progress() {
               </>
             )}
           </div>
-        ) : (
+        ) : tab === 'historial' ? (
           <HistoryPanel items={history ?? []} />
+        ) : (
+          <GoalPanel />
         )}
       </div>
 
