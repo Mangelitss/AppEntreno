@@ -9,11 +9,9 @@
 import { db } from './db'
 import { epley1RM } from '../lib/stats'
 import { isRankable } from '../lib/muscle-groups'
+import { muscleContributions } from '../lib/muscle-work'
 import { weekKeyOf, type WeekMuscleData } from '../lib/ranks'
 import type { Exercise, WorkoutSet } from './types'
-
-/** Lo que aporta una serie a un musculo secundario frente al objetivo. */
-const SECONDARY_WEIGHT = 0.4
 
 interface Bucket {
   effectiveSets: number
@@ -64,10 +62,7 @@ export async function buildWeekMuscleData(): Promise<WeekMuscleData[]> {
     // El cardio no puntua: no hay carga que progresar.
     if (!exercise || exercise.tracking === 'cardio') continue
 
-    if (exercise.target) add(weekKey, exercise.target, 1, set, true)
-    for (const secondary of exercise.secondaryMuscles ?? []) {
-      add(weekKey, secondary, SECONDARY_WEIGHT, set, false)
-    }
+    for (const c of muscleContributions(exercise)) add(weekKey, c.muscle, c.share, set, c.direct)
   }
 
   return [...buckets.entries()].map(([key, bucket]) => {

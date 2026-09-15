@@ -6,6 +6,7 @@ const NAV = [
   { to: '/rutinas', label: 'Rutinas', icon: '☰' },
   { to: '/ejercicios', label: 'Ejercicios', icon: '⛁' },
   { to: '/progreso', label: 'Progreso', icon: '↗' },
+  { to: '/estadisticas', label: 'Estadisticas', icon: '▦' },
   { to: '/medidas', label: 'Medidas', icon: '⚖' },
   { to: '/perfil', label: 'Perfil', icon: '☺' }
 ]
@@ -67,12 +68,25 @@ export default function Layout() {
   )
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+export function PageHeader({ title, subtitle, action, onBack }: {
+  title: string; subtitle?: string; action?: React.ReactNode; onBack?: () => void
+}) {
   return (
     <header className="safe-top flex items-end justify-between gap-4 px-4 pb-4 pt-4 md:px-8 md:pt-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-ink-500">{subtitle}</p>}
+      <div className="flex min-w-0 items-center gap-2">
+        {onBack && (
+          <button
+            onClick={onBack}
+            aria-label="Volver"
+            className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xl text-ink-300 transition-colors hover:bg-ink-800 hover:text-ink-100"
+          >
+            ‹
+          </button>
+        )}
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm text-ink-500">{subtitle}</p>}
+        </div>
       </div>
       {action}
     </header>

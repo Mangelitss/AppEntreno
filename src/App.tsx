@@ -8,6 +8,11 @@ import Exercises from './pages/Exercises'
 import ExerciseDetail from './pages/ExerciseDetail'
 import RoutineEditor from './pages/RoutineEditor'
 import Progress from './pages/Progress'
+import Stats from './pages/Stats'
+import MuscleRadar from './pages/stats/MuscleRadar'
+import BodyDistribution from './pages/stats/BodyDistribution'
+import SetsPerGroup from './pages/stats/SetsPerGroup'
+import MonthlyReport from './pages/stats/MonthlyReport'
 import Body from './pages/Body'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
@@ -77,6 +82,11 @@ export default function App() {
             <Route path="/ejercicios" element={<Exercises />} />
             <Route path="/ejercicios/:exerciseId" element={<ExerciseDetail />} />
             <Route path="/progreso" element={<Progress />} />
+            <Route path="/estadisticas" element={<Stats />} />
+            <Route path="/estadisticas/distribucion" element={<MuscleRadar />} />
+            <Route path="/estadisticas/distribucion-cuerpo" element={<BodyDistribution />} />
+            <Route path="/estadisticas/recuento" element={<SetsPerGroup />} />
+            <Route path="/estadisticas/informe" element={<MonthlyReport />} />
             <Route path="/medidas" element={<Body />} />
             {/* la ruta antigua sigue viva por si tienes la app instalada en esa pantalla */}
             <Route path="/cuerpo" element={<Body />} />

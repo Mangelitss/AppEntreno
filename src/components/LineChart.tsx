@@ -4,8 +4,8 @@
 export interface Point { x: number; y: number; label?: string }
 
 export default function LineChart({
-  points, height = 180, unit = '', accent = 'var(--color-accent)'
-}: { points: Point[]; height?: number; unit?: string; accent?: string }) {
+  points, height = 180, unit = '', accent = 'var(--color-accent)', xLabel, yLabel
+}: { points: Point[]; height?: number; unit?: string; accent?: string; xLabel?: string; yLabel?: string }) {
   if (points.length === 0) {
     return <div className="flex h-[180px] items-center justify-center text-sm text-ink-500">Sin datos todavia</div>
   }
@@ -37,8 +37,8 @@ export default function LineChart({
   const first = points[0]
   const delta = last.y - first.y
 
-  return (
-    <div>
+  const chart = (
+    <div className="min-w-0 flex-1">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height }}>
         <defs>
           <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
@@ -60,6 +60,25 @@ export default function LineChart({
         </span>
         <span>{last.label ?? ''}</span>
       </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div className="flex items-stretch gap-1.5">
+        {yLabel && (
+          <span
+            className="flex items-center text-[10px] uppercase tracking-wide text-ink-500"
+            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          >
+            {yLabel}
+          </span>
+        )}
+        {chart}
+      </div>
+      {xLabel && (
+        <p className="mt-1 text-center text-[10px] uppercase tracking-wide text-ink-500">{xLabel}</p>
+      )}
     </div>
   )
 }
