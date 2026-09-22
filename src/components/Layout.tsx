@@ -22,7 +22,7 @@ export default function Layout() {
     <div className="min-h-full md:flex">
       <aside className="hidden md:flex w-56 shrink-0 flex-col gap-1 border-r border-ink-800 bg-ink-900/50 p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <span className="text-accent text-xl">▮▮</span>
+          <img src="/icon-192.png" alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
           <span className="font-semibold tracking-tight">AppEntreno</span>
         </div>
         {NAV.map(item => (
