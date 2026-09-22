@@ -59,7 +59,31 @@ const FALLBACK: RawExercise[] = [
   { id: '0001', name: '3/4 sit-up', category: 'waist', equipment: 'body weight', target: 'abs', image: 'images/0001-2gPfomN.jpg', gif: 'videos/0001-2gPfomN.gif' }
 ]
 
-const CATALOG_VERSION = 1
+/**
+ * Ejercicios propios de la app que queremos en la base de TODO el mundo,
+ * existan o no en el dataset descargado. Se insertan siempre (ver ensureCatalog).
+ * Los ids no son numericos a proposito, para no chocar nunca con los del dataset.
+ */
+const BUILTIN: RawExercise[] = [
+  {
+    id: 'ext-cuadriceps',
+    name: 'Extension de Cuadriceps',
+    category: 'upper legs',
+    equipment: 'leverage machine',
+    target: 'quads',
+    secondaryMuscles: [],
+    instructions: [
+      'Sientate en la maquina con la espalda apoyada y engancha los pies bajo el rodillo.',
+      'Ajusta el respaldo para que el eje de giro quede a la altura de la rodilla.',
+      'Extiende las rodillas hasta dejar las piernas casi rectas, apretando el cuadriceps.',
+      'Baja despacio controlando el peso hasta la posicion inicial.'
+    ],
+    image: 'images/0585-my33uHU.jpg',
+    gif: 'videos/0585-my33uHU.gif'
+  }
+]
+
+const CATALOG_VERSION = 2
 
 /** Campos que vienen del dataset y por tanto se pueden restaurar. */
 export type DatasetFields = Pick<
@@ -153,7 +177,11 @@ export async function ensureCatalog(
 
   const previous = new Map((await db.exercises.toArray()).map(e => [e.id, e]))
 
-  const rows = raws.map(raw => {
+  // Los ejercicios integrados van siempre, ademas de lo que traiga el dataset.
+  const builtinIds = new Set(BUILTIN.map(b => String(b.id)))
+  const combined = [...raws.filter(r => !builtinIds.has(String(r.id))), ...BUILTIN]
+
+  const rows = combined.map(raw => {
     const fresh = toExercise(raw)
     const old = previous.get(fresh.id)
     if (!old) return fresh

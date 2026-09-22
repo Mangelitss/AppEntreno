@@ -91,6 +91,26 @@ test('sin conservar, el catalogo recupera sus datos pero no lo que es tuyo', asy
   assert.deepEqual(after?.editedFields, [], 'y se olvida que estaba editado')
 })
 
+test('el ejercicio integrado esta en la base de todo el mundo', async () => {
+  await ensureCatalog()
+  const ext = await db.exercises.get('ext-cuadriceps')
+  assert.ok(ext, 'la Extension de Cuadriceps se inserta siempre')
+  assert.equal(ext?.name, 'Extension de Cuadriceps')
+  assert.equal(ext?.category, 'upper legs')
+  assert.equal(ext?.target, 'quads')
+  assert.equal(ext?.isCustom, 0, 'es de catalogo, no un ejercicio propio del usuario')
+})
+
+test('lo tuyo sobre el ejercicio integrado aguanta una reimportacion', async () => {
+  await ensureCatalog()
+  await db.exercises.update('ext-cuadriceps', { favorite: 1, incrementKg: 2.5 })
+
+  await ensureCatalog({ preserveEdits: true })
+  const after = await db.exercises.get('ext-cuadriceps')
+  assert.equal(after?.favorite, 1)
+  assert.equal(after?.incrementKg, 2.5)
+})
+
 test('las actividades de cardio sobreviven a una reimportacion', async () => {
   await ensureCardioCatalog()
   const before = await db.exercises.get('cardio-bici')
