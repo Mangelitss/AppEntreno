@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../db/db'
 import { dateKey } from '../db/repo'
 import { muscleWorkInRange, heatColor } from '../lib/muscle-work'
+import { formatDateEs } from '../lib/stats'
 import BodyMap from '../components/BodyMap'
+import WorkoutSummaryCard, { type WorkoutSummary } from '../components/WorkoutSummaryCard'
 import { PageHeader } from '../components/Layout'
 import { Card, cx } from '../components/ui'
 
@@ -21,7 +24,8 @@ const ADVANCED: Advanced[] = [
   { to: '/estadisticas/recuento', icon: '📈', title: 'Recuento de series por grupo', desc: 'Como evolucionan tus series de cada grupo semana a semana.' },
   { to: '/estadisticas/distribucion', icon: '🕸', title: 'Distribucion de los musculos (grafico)', desc: 'Compara tu reparto actual con el periodo anterior.' },
   { to: '/estadisticas/distribucion-cuerpo', icon: '🧍', title: 'Distribucion de los musculos (cuerpo)', desc: 'Mapa semanal de musculos trabajados.' },
-  { to: '/estadisticas/informe', icon: '📋', title: 'Informe mensual', desc: 'Resumen de tus entrenos y estadisticas del mes.' }
+  { to: '/estadisticas/informe', icon: '📋', title: 'Informe mensual', desc: 'Resumen de tus entrenos y estadisticas del mes.' },
+  { to: '/estadisticas/historial-vida', icon: '📅', title: 'Historial de vida', desc: 'Semana, mes o ano: peso, grasa, medidas y entrenos periodo a periodo.' }
 ]
 
 export default function Stats() {
@@ -42,8 +46,39 @@ export default function Stats() {
 
   const fromKey = selected ?? dateKey(days[0])
   const toKey = selected ?? dateKey(today)
+  const weekFrom = dateKey(days[0])
+  const weekTo = dateKey(today)
 
   const work = useLiveQuery(() => muscleWorkInRange(fromKey, toKey), [fromKey, toKey])
+
+  // Cuantos entrenos hubo cada uno de los 7 dias, para marcarlos en la tira.
+  const dayCounts = useLiveQuery(async () => {
+    const ws = (await db.workouts.toArray())
+      .filter(w => !w.deletedAt && w.finishedAt && w.dateKey >= weekFrom && w.dateKey <= weekTo)
+    const m = new Map<string, number>()
+    for (const w of ws) m.set(w.dateKey, (m.get(w.dateKey) ?? 0) + 1)
+    return m
+  }, [weekFrom, weekTo], undefined)
+
+  // Detalle del dia elegido: sus entrenos con ejercicios y series.
+  const dayDetail = useLiveQuery(async () => {
+    if (!selected) return null
+    const workouts = (await db.workouts.toArray())
+      .filter(w => !w.deletedAt && w.finishedAt && w.dateKey === selected)
+      .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))
+    const existing = new Set((await db.routines.toArray()).filter(r => !r.deletedAt).map(r => r.id))
+    if (!workouts.length) return { items: [] as WorkoutSummary[], existing }
+
+    const ids = new Set(workouts.map(w => w.id))
+    const allSets = (await db.sets.toArray()).filter(s => !s.deletedAt && ids.has(s.workoutId))
+    const allLinks = (await db.workoutExercises.toArray()).filter(l => !l.deletedAt && ids.has(l.workoutId))
+    const items: WorkoutSummary[] = workouts.map(w => ({
+      workout: w,
+      sets: allSets.filter(s => s.workoutId === w.id),
+      exercises: allLinks.filter(l => l.workoutId === w.id).sort((a, b) => a.order - b.order)
+    }))
+    return { items, existing }
+  }, [selected], null)
 
   const colors = useMemo(() => {
     const map = new Map<string, string>()
@@ -61,7 +96,8 @@ export default function Stats() {
       <PageHeader title="Estadisticas" subtitle="Como se reparte tu trabajo y como evolucionas" />
 
       <div className="px-4 pb-8 md:px-8 lg:grid lg:grid-cols-5 lg:items-start lg:gap-6">
-        <Card className="mb-6 p-4 lg:col-span-3 lg:mb-0 lg:sticky lg:top-4">
+        <div className="mb-6 lg:col-span-3 lg:mb-0">
+        <Card className="p-4">
           <div className="mb-3 flex items-baseline justify-between gap-2">
             <h2 className="text-sm font-medium text-ink-300">Grafico corporal de los ultimos 7 dias</h2>
             {selected && (
@@ -69,24 +105,34 @@ export default function Stats() {
             )}
           </div>
 
-          {/* Tira de dias: toca uno para ver solo ese dia */}
+          {/* Tira de dias: los entrenados van marcados; toca uno para ver solo ese dia */}
           <div className="mb-4 grid grid-cols-7 gap-1.5">
             {days.map(d => {
               const key = dateKey(d)
               const isToday = key === dateKey(today)
               const isSel = selected === key
+              const count = dayCounts?.get(key) ?? 0
+              const trainedDay = count > 0
               return (
                 <button
                   key={key}
                   onClick={() => setSelected(s => (s === key ? null : key))}
+                  title={trainedDay ? `${count} ${count === 1 ? 'entreno' : 'entrenos'}` : 'Descanso'}
                   className={cx(
                     'flex flex-col items-center gap-1 rounded-xl border py-2 transition-colors',
-                    isSel ? 'border-accent bg-accent/10' : 'border-ink-800 hover:bg-ink-850'
+                    isSel ? 'border-accent bg-accent/10'
+                      : trainedDay ? 'border-accent/40 bg-accent/5 hover:bg-ink-850'
+                      : 'border-ink-800 hover:bg-ink-850'
                   )}
                 >
                   <span className="text-[10px] text-ink-500">{WD[d.getDay()]}</span>
                   <span className="text-sm font-semibold leading-none">{d.getDate()}</span>
-                  <span className={cx('h-1 w-1 rounded-full', isToday ? 'bg-accent' : 'bg-transparent')} />
+                  <span
+                    className={cx(
+                      'h-1.5 w-1.5 rounded-full',
+                      trainedDay ? 'bg-accent' : isToday ? 'bg-ink-600' : 'bg-transparent'
+                    )}
+                  />
                 </button>
               )
             })}
@@ -108,6 +154,34 @@ export default function Stats() {
             </span>
           </div>
         </Card>
+
+        {/* Detalle del dia elegido: que rutina, que ejercicios y con que pesos */}
+        {selected && (
+          <section className="mt-4">
+            <h3 className="mb-2 px-1 text-sm font-medium capitalize text-ink-300">
+              {formatDateEs(selected)}
+            </h3>
+            {dayDetail === null ? (
+              <Card className="p-4 text-sm text-ink-500">Cargando…</Card>
+            ) : dayDetail.items.length === 0 ? (
+              <Card className="p-4 text-center text-sm text-ink-500">
+                Descanso: no entrenaste este dia.
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {dayDetail.items.map(item => (
+                  <WorkoutSummaryCard
+                    key={item.workout.id}
+                    item={item}
+                    defaultOpen
+                    existingRoutineIds={dayDetail.existing}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+        </div>
 
         <section className="lg:col-span-2">
           <p className="mb-2 px-1 text-xs uppercase tracking-wide text-ink-500">Estadisticas avanzadas</p>

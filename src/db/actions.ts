@@ -355,13 +355,53 @@ export async function addSet(workoutExerciseId: ID): Promise<void> {
   }))
 }
 
-export async function addExerciseToWorkout(workoutId: ID, exerciseId: ID): Promise<void> {
+/**
+ * Rellena un ejercicio del entreno con sus series de partida.
+ *
+ * Cada serie llega precargada con lo que hiciste la ultima vez con ese
+ * ejercicio (fuera de este entreno). El cardio es una sola entrada con su
+ * duracion objetivo. Sirve tanto al anadir como al cambiar un ejercicio.
+ */
+async function seedSetsForLink(link: WorkoutExercise, exercise: Exercise): Promise<void> {
+  const previous = await lastSessionFor(exercise.id, link.workoutId)
+  const previousSets = previous?.sets.filter(s => s.type !== 'warmup') ?? []
+  const sets: WorkoutSet[] = []
+
+  if (exercise.tracking === 'cardio') {
+    sets.push(blankSet({
+      workoutId: link.workoutId, workoutExerciseId: link.id, exerciseId: exercise.id, order: 0,
+      durationSec: (link.targetDurationMin ?? 30) * 60
+    }))
+  } else {
+    for (let i = 0; i < link.targetSets; i++) {
+      const ref = previousSets[i] ?? previousSets[previousSets.length - 1]
+      sets.push(blankSet({
+        workoutId: link.workoutId, workoutExerciseId: link.id, exerciseId: exercise.id, order: i,
+        weight: ref?.weight ?? 0,
+        reps: ref?.reps ?? link.targetRepsMin
+      }))
+    }
+  }
+  await db.sets.bulkPut(sets)
+}
+
+/** Objetivos por defecto de un ejercicio recien puesto en el entreno. */
+async function defaultTargetsFor(exercise: Exercise) {
   const settings = await getSettings()
+  const isCardio = exercise.tracking === 'cardio'
+  return {
+    targetSets: isCardio ? 1 : settings.defaultSets,
+    targetRepsMin: isCardio ? 0 : settings.defaultRepsMin,
+    targetRepsMax: isCardio ? 0 : settings.defaultRepsMax,
+    restSeconds: isCardio ? 0 : settings.defaultRestSeconds,
+    targetDurationMin: isCardio ? 30 : null
+  }
+}
+
+export async function addExerciseToWorkout(workoutId: ID, exerciseId: ID): Promise<void> {
   const exercise = await db.exercises.get(exerciseId)
   if (!exercise) return
   const siblings = (await db.workoutExercises.where('workoutId').equals(workoutId).toArray()).filter(l => !l.deletedAt)
-
-  const isCardio = exercise.tracking === 'cardio'
 
   const link: WorkoutExercise = {
     id: uid(),
@@ -369,37 +409,70 @@ export async function addExerciseToWorkout(workoutId: ID, exerciseId: ID): Promi
     exerciseId,
     exerciseName: displayName(exercise),
     order: siblings.length,
-    targetSets: isCardio ? 1 : settings.defaultSets,
-    targetRepsMin: isCardio ? 0 : settings.defaultRepsMin,
-    targetRepsMax: isCardio ? 0 : settings.defaultRepsMax,
-    restSeconds: isCardio ? 0 : settings.defaultRestSeconds,
-    targetDurationMin: isCardio ? 30 : null,
+    ...(await defaultTargetsFor(exercise)),
     notes: '',
     updatedAt: now(),
     deletedAt: null
   }
   await db.workoutExercises.put(link)
+  await seedSetsForLink(link, exercise)
+}
 
-  const previous = await lastSessionFor(exerciseId, workoutId)
-  const previousSets = previous?.sets.filter(s => s.type !== 'warmup') ?? []
-  const sets: WorkoutSet[] = []
+/**
+ * Cambia un ejercicio por otro solo en este entreno (p. ej. la maquina esta
+ * ocupada o rota). No toca la rutina: `workoutExercises` es una instantanea
+ * independiente de `routineItems`, asi que el cambio muere con este dia.
+ *
+ * Se mantiene el sitio en la lista y, si el nuevo ejercicio es del mismo tipo
+ * (fuerza o cardio), tambien sus objetivos; al cruzar de tipo se cae a los
+ * valores por defecto. Las series del ejercicio anterior se retiran y se
+ * siembran unas nuevas con el historial del ejercicio entrante.
+ */
+export async function swapExerciseInWorkout(workoutExerciseId: ID, newExerciseId: ID): Promise<void> {
+  const link = await db.workoutExercises.get(workoutExerciseId)
+  if (!link || link.deletedAt || link.exerciseId === newExerciseId) return
+  const [exercise, oldExercise] = await Promise.all([
+    db.exercises.get(newExerciseId),
+    db.exercises.get(link.exerciseId)
+  ])
+  if (!exercise) return
 
-  if (isCardio) {
-    sets.push(blankSet({
-      workoutId, workoutExerciseId: link.id, exerciseId, order: 0,
-      durationSec: 30 * 60
-    }))
-  } else {
-    for (let i = 0; i < link.targetSets; i++) {
-      const ref = previousSets[i] ?? previousSets[previousSets.length - 1]
-      sets.push(blankSet({
-        workoutId, workoutExerciseId: link.id, exerciseId, order: i,
-        weight: ref?.weight ?? 0,
-        reps: ref?.reps ?? link.targetRepsMin
-      }))
-    }
-  }
-  await db.sets.bulkPut(sets)
+  const sameKind = (exercise.tracking === 'cardio') === (oldExercise?.tracking === 'cardio')
+  const targets = sameKind
+    ? {
+        targetSets: link.targetSets,
+        targetRepsMin: link.targetRepsMin,
+        targetRepsMax: link.targetRepsMax,
+        restSeconds: link.restSeconds,
+        targetDurationMin: link.targetDurationMin ?? null
+      }
+    : await defaultTargetsFor(exercise)
+
+  // Retira las series del ejercicio saliente (borrado logico, para el sync).
+  const oldSets = (await db.sets.where('workoutExerciseId').equals(workoutExerciseId).toArray())
+    .filter(s => !s.deletedAt)
+  for (const s of oldSets) await db.sets.update(s.id, { deletedAt: now(), updatedAt: now() })
+
+  await db.workoutExercises.update(workoutExerciseId, {
+    exerciseId: newExerciseId,
+    exerciseName: displayName(exercise),
+    notes: '',
+    ...targets,
+    updatedAt: now()
+  })
+
+  await seedSetsForLink({ ...link, exerciseId: newExerciseId, ...targets }, exercise)
+}
+
+/**
+ * Quita un ejercicio de este entreno (y sus series). Igual que el cambio, es
+ * un borrado logico que solo afecta al dia: la rutina no se toca.
+ */
+export async function removeExerciseFromWorkout(workoutExerciseId: ID): Promise<void> {
+  const sets = (await db.sets.where('workoutExerciseId').equals(workoutExerciseId).toArray())
+    .filter(s => !s.deletedAt)
+  for (const s of sets) await db.sets.update(s.id, { deletedAt: now(), updatedAt: now() })
+  await db.workoutExercises.update(workoutExerciseId, { deletedAt: now(), updatedAt: now() })
 }
 
 export interface ProgressProposal {

@@ -7,12 +7,14 @@ import { effectiveSets } from '../lib/progression'
 import { displayName } from '../lib/muscles'
 import { formatCardioDuration } from '../lib/cardio'
 import { buildWeekMuscleData } from '../db/rank-data'
+import { topTrainedExercises } from '../lib/exercise-stats'
 import { computeMuscleRanks, weekKeyOf } from '../lib/ranks'
 import RankPanel from '../components/RankPanel'
 import HistoryPanel from '../components/HistoryPanel'
 import GoalPanel from '../components/GoalPanel'
 import LineChart, { type Point } from '../components/LineChart'
 import ExercisePicker from '../components/ExercisePicker'
+import ExerciseThumb from '../components/ExerciseThumb'
 import { Button, Card, Empty, Pill, cx } from '../components/ui'
 import { PageHeader } from '../components/Layout'
 
@@ -52,6 +54,11 @@ export default function Progress() {
 
   const exercise = useLiveQuery(() => exerciseId ? db.exercises.get(exerciseId) : undefined, [exerciseId])
   const progression = useLiveQuery(() => exerciseId ? db.progression.get(exerciseId) : undefined, [exerciseId])
+
+  // Los 5 ejercicios que mas veces has entrenado. Es el arranque de "Por
+  // ejercicio": lo normal es querer uno de estos y, si no, buscar. La misma
+  // consulta la usa el modulo de Estadisticas (lib/exercise-stats).
+  const topExercises = useLiveQuery(() => topTrainedExercises(5), [], [])
 
   /** Serie temporal del ejercicio elegido, una entrada por sesion. */
   const series = useLiveQuery(async () => {
@@ -180,7 +187,37 @@ export default function Progress() {
             </Button>
 
             {!exerciseId ? (
-              <Empty title="Elige un ejercicio" hint="Veras su grafica de progreso, tus records y si estas listo para subir peso." />
+              (topExercises ?? []).length > 0 ? (
+                <div className="space-y-2">
+                  <p className="px-1 text-xs uppercase tracking-wide text-ink-500">Los que mas entrenas</p>
+                  <Card className="divide-y divide-ink-850 overflow-hidden p-0">
+                    {(topExercises ?? []).map(t => (
+                      <button
+                        key={t.exerciseId}
+                        onClick={() => {
+                          setExerciseId(t.exerciseId)
+                          setParams({ ejercicio: t.exerciseId }, { replace: true })
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ink-850"
+                      >
+                        <ExerciseThumb exercise={t.exercise} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm capitalize">{displayName(t.exercise)}</p>
+                          <p className="truncate text-xs text-ink-500">
+                            {t.sessions} {t.sessions === 1 ? 'sesion' : 'sesiones'}
+                          </p>
+                        </div>
+                        <span className="text-ink-600">›</span>
+                      </button>
+                    ))}
+                  </Card>
+                  <p className="px-1 text-xs text-ink-500">
+                    Toca uno para ver su progreso, o busca cualquier otro con el boton de arriba.
+                  </p>
+                </div>
+              ) : (
+                <Empty title="Elige un ejercicio" hint="Veras su grafica de progreso, tus records y si estas listo para subir peso." />
+              )
             ) : (series ?? []).length === 0 ? (
               <Empty title="Sin datos de este ejercicio" hint="Hazlo en un entreno y termina la sesion para que aparezca aqui." />
             ) : (
@@ -272,6 +309,8 @@ export default function Progress() {
 
       <ExercisePicker
         open={picking}
+        libraryFilters
+        title="Elegir ejercicio"
         onClose={() => setPicking(false)}
         onPick={id => {
           setExerciseId(id)

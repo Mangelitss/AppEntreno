@@ -12,7 +12,7 @@ import { createCustomExercise } from '../db/actions'
  * escribir sobre 1.324 ejercicios no se nota ni en un movil viejo.
  */
 export default function ExercisePicker({
-  open, onClose, onPick, only, title = 'Anadir ejercicio'
+  open, onClose, onPick, only, title = 'Anadir ejercicio', libraryFilters = false
 }: {
   open: boolean
   onClose: () => void
@@ -20,14 +20,51 @@ export default function ExercisePicker({
   /** limita la lista a actividades de cardio o a ejercicios de fuerza */
   only?: 'cardio' | 'reps'
   title?: string
+  /**
+   * Anade los filtros por biblioteca personal (con registro, en una rutina, en
+   * el calendario). Solo tienen sentido en Progreso, asi que van apagados por
+   * defecto y no aparecen al anadir un ejercicio a un entreno.
+   */
+  libraryFilters?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string>('')
   const [equipment, setEquipment] = useState<string>('')
+  const [flags, setFlags] = useState({ registro: false, rutina: false, calendario: false })
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
 
   const exercises = useLiveQuery(() => db.exercises.toArray(), [], [])
+
+  // Conjuntos de ids que cumplen cada filtro personal. Se cruzan las tablas en
+  // memoria una sola vez en vez de consultar ejercicio a ejercicio.
+  const filterSets = useLiveQuery(async () => {
+    if (!libraryFilters) return null
+
+    const finished = new Set(
+      (await db.workouts.toArray()).filter(w => !w.deletedAt && w.finishedAt).map(w => w.id)
+    )
+    const links = (await db.workoutExercises.toArray()).filter(l => !l.deletedAt)
+    const withRecord = new Set<string>()
+    for (const l of links) if (finished.has(l.workoutId)) withRecord.add(l.exerciseId)
+
+    const activeRoutines = new Set(
+      (await db.routines.toArray()).filter(r => !r.deletedAt && r.archived !== 1).map(r => r.id)
+    )
+    const scheduled = new Set(
+      (await db.schedule.toArray())
+        .filter(s => !s.deletedAt && s.routineId).map(s => s.routineId as string)
+    )
+    const items = (await db.routineItems.toArray()).filter(i => !i.deletedAt)
+    const inRoutine = new Set<string>()
+    const inSchedule = new Set<string>()
+    for (const it of items) {
+      if (activeRoutines.has(it.routineId)) inRoutine.add(it.exerciseId)
+      if (scheduled.has(it.routineId)) inSchedule.add(it.exerciseId)
+    }
+
+    return { withRecord, inRoutine, inSchedule }
+  }, [libraryFilters], null)
 
   const categories = useMemo(
     () => [...new Set((exercises ?? []).map(e => e.category).filter(Boolean))].sort(),
@@ -46,10 +83,13 @@ export default function ExercisePicker({
       .filter(e => !only || (e.tracking ?? 'reps') === only)
       .filter(e => !category || e.category === category)
       .filter(e => !equipment || e.equipment === equipment)
+      .filter(e => !flags.registro || (filterSets?.withRecord.has(e.id) ?? false))
+      .filter(e => !flags.rutina || (filterSets?.inRoutine.has(e.id) ?? false))
+      .filter(e => !flags.calendario || (filterSets?.inSchedule.has(e.id) ?? false))
       .filter(e => terms.every(t => e.search.includes(t) || normalize(e.alias ?? '').includes(t)))
       .sort((a, b) => (b.favorite - a.favorite) || a.name.localeCompare(b.name))
       .slice(0, 120)
-  }, [exercises, query, category, equipment, only])
+  }, [exercises, query, category, equipment, only, flags, filterSets])
 
   async function handleCreate() {
     if (!newName.trim()) return
@@ -88,6 +128,27 @@ export default function ExercisePicker({
             {equipments.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+        {libraryFilters && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {([
+              ['registro', 'Con registro'],
+              ['rutina', 'En una rutina'],
+              ['calendario', 'En el calendario']
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setFlags(f => ({ ...f, [key]: !f[key] }))}
+                aria-pressed={flags[key]}
+                className={cx(
+                  'h-9 shrink-0 rounded-full px-3 text-sm transition-colors',
+                  flags[key] ? 'bg-accent font-medium text-ink-950' : 'bg-ink-800 text-ink-300'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <ul className="divide-y divide-ink-850">

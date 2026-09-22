@@ -5,7 +5,7 @@ import { db, getSettings } from '../db/db'
 import { now, softDelete } from '../db/repo'
 import {
   addExerciseToWorkout, addSet, commitWorkout, discardWorkout, evaluateWorkout,
-  lastSessionFor, type ProgressProposal
+  lastSessionFor, removeExerciseFromWorkout, swapExerciseInWorkout, type ProgressProposal
 } from '../db/actions'
 import { formatDateEs, formatDuration, formatKg, totalVolume } from '../lib/stats'
 import { formatCardioDuration } from '../lib/cardio'
@@ -94,7 +94,8 @@ export default function Train() {
 
   const [index, setIndex] = useState(0)
   const [rest, setRest] = useState<Rest | null>(null)
-  const [picking, setPicking] = useState(false)
+  const [showNext, setShowNext] = useState(false)
+  const [picker, setPicker] = useState<'add' | 'swap' | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [proposals, setProposals] = useState<ProgressProposal[] | null>(null)
@@ -115,9 +116,13 @@ export default function Train() {
   const list = links ?? []
   const current = list[Math.min(index, Math.max(0, list.length - 1))]
   const isLast = list.length > 0 && index >= list.length - 1
+  const nextLink = list[Math.min(index, Math.max(0, list.length - 1)) + 1]
 
   const exercise = useLiveQuery(
     () => current ? db.exercises.get(current.exerciseId) : undefined, [current?.exerciseId]
+  )
+  const nextExercise = useLiveQuery(
+    () => nextLink ? db.exercises.get(nextLink.exerciseId) : undefined, [nextLink?.exerciseId]
   )
   const previous = useLiveQuery(
     () => current ? lastSessionFor(current.exerciseId, workoutId) : null, [current?.exerciseId, workoutId], null
@@ -130,6 +135,16 @@ export default function Train() {
 
   const isCardio = exercise?.tracking === 'cardio'
 
+  // Que se muestra durante el descanso:
+  // - quedan series del ejercicio actual -> se sigue mostrando el actual;
+  // - ya estan todas hechas y hay otro despues -> el siguiente;
+  // - era la ultima serie del ultimo ejercicio -> nada, toca estirar.
+  const currentHasRemaining = sets.some(s => s.done !== 1)
+  const restMode: 'current' | 'next' | 'done' =
+    currentHasRemaining ? 'current' : nextLink ? 'next' : 'done'
+  const previewLink = restMode === 'current' ? current : nextLink
+  const previewExercise = restMode === 'current' ? exercise : nextExercise
+
   // Un entreno de hoy se cronometra; uno registrado a posteriori ya trae su duracion.
   const backdated = workout?.plannedDurationMs ?? null
 
@@ -141,6 +156,9 @@ export default function Train() {
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [workout?.startedAt, backdated])
+
+  // Al cerrar un descanso, la vista previa del siguiente ejercicio vuelve a plegarse.
+  useEffect(() => { if (!rest) setShowNext(false) }, [rest])
 
   async function patchSet(set: WorkoutSet, changes: Partial<WorkoutSet>) {
     await db.sets.update(set.id, { ...changes, updatedAt: now() })
@@ -155,6 +173,17 @@ export default function Train() {
       if (seconds > 0) setRest({ endsAt: Date.now() + seconds * 1000, total: seconds })
       if ('vibrate' in navigator) navigator.vibrate(15)
     }
+  }
+
+  async function removeCurrent() {
+    if (!current) return
+    const done = sets.some(s => s.done === 1)
+    const message = done
+      ? `Eliminar «${current.exerciseName}» y sus series de hoy? No afecta a la rutina.`
+      : `Eliminar «${current.exerciseName}» de este entreno? No afecta a la rutina.`
+    if (!confirm(message)) return
+    await removeExerciseFromWorkout(current.id)
+    setIndex(i => Math.max(0, Math.min(i, list.length - 2)))
   }
 
   async function openFinish() {
@@ -238,22 +267,59 @@ export default function Train() {
         {!current ? (
           <div className="flex flex-col items-center gap-4 py-20 text-center">
             <p className="text-ink-500">Entreno vacio</p>
-            <Button variant="primary" onClick={() => setPicking(true)}>Anadir ejercicio</Button>
+            <Button variant="primary" onClick={() => setPicker('add')}>Anadir ejercicio</Button>
           </div>
         ) : (
           <>
             {/* Hueco central: la animacion del ejercicio, o el descanso mientras corre. */}
             <div className="flex flex-col items-center py-4">
               {rest ? (
-                <RestTimer
-                  endsAt={rest.endsAt}
-                  totalSeconds={rest.total}
-                  onDismiss={() => setRest(null)}
-                  onExtend={seconds => setRest(r => r && {
-                    endsAt: Math.max(Date.now(), r.endsAt + seconds * 1000),
-                    total: Math.max(1, r.total + seconds)
-                  })}
-                />
+                <>
+                  <RestTimer
+                    endsAt={rest.endsAt}
+                    totalSeconds={rest.total}
+                    onDismiss={() => setRest(null)}
+                    onExtend={seconds => setRest(r => r && {
+                      endsAt: Math.max(Date.now(), r.endsAt + seconds * 1000),
+                      total: Math.max(1, r.total + seconds)
+                    })}
+                  />
+
+                  {/* Segun queden series o no: el ejercicio actual, el siguiente, o estirar. */}
+                  {restMode === 'done' ? (
+                    <div className="mt-5 w-full max-w-xs rounded-2xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-center">
+                      <p className="text-sm font-medium text-emerald-300">¡Ultima serie hecha!</p>
+                      <p className="mt-0.5 text-xs text-ink-400">
+                        Aprovecha el descanso para estirar. Cuando acabes, dale a «Terminar».
+                      </p>
+                    </div>
+                  ) : previewLink && (
+                    <div className="mt-5 w-full max-w-xs">
+                      <button
+                        onClick={() => setShowNext(v => !v)}
+                        aria-expanded={showNext}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-ink-800 bg-ink-850 px-4 py-3 text-left transition-colors hover:border-accent/40"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[11px] uppercase tracking-wide text-ink-500">
+                            {restMode === 'current' ? 'Ejercicio actual' : 'Siguiente'}
+                          </span>
+                          <span className="block truncate text-sm font-medium capitalize text-ink-100">
+                            {previewLink.exerciseName}
+                          </span>
+                        </span>
+                        <span className={cx('shrink-0 text-ink-500 transition-transform', showNext && 'rotate-180')}>
+                          ⌄
+                        </span>
+                      </button>
+                      {showNext && (
+                        <div className="mt-3 flex justify-center">
+                          <ExerciseThumb exercise={previewExercise} size="xl" shape="rounded-3xl" gif />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               ) : (
                 <ExerciseThumb exercise={exercise} size="xl" shape="rounded-3xl" gif />
               )}
@@ -366,7 +432,13 @@ export default function Train() {
               <Button variant="ghost" size="sm" onClick={() => setNotesOpen(true)}>
                 {current.notes ? 'Nota ✓' : 'Anadir nota'}
               </Button>
-              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setPicking(true)}>
+              <Button variant="ghost" size="sm" onClick={() => setPicker('swap')}>
+                Cambiar
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => void removeCurrent()}>
+                Eliminar
+              </Button>
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setPicker('add')}>
                 + Ejercicio
               </Button>
             </div>
@@ -393,12 +465,17 @@ export default function Train() {
       </div>
 
       <ExercisePicker
-        open={picking}
-        onClose={() => setPicking(false)}
+        open={picker !== null}
+        onClose={() => setPicker(null)}
+        title={picker === 'swap' ? 'Cambiar ejercicio' : 'Anadir ejercicio'}
         onPick={async id => {
-          await addExerciseToWorkout(workoutId, id)
-          setPicking(false)
-          setIndex(list.length)
+          if (picker === 'swap' && current) {
+            await swapExerciseInWorkout(current.id, id)
+          } else {
+            await addExerciseToWorkout(workoutId, id)
+            setIndex(list.length)
+          }
+          setPicker(null)
         }}
       />
 

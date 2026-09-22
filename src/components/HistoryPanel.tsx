@@ -8,13 +8,16 @@
 // ---------------------------------------------------------------------------
 
 import { useMemo, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../db/db'
 import type { Workout, WorkoutExercise, WorkoutSet } from '../db/types'
 import { dateKey } from '../db/repo'
-import { formatDateEs, formatDuration, totalVolume } from '../lib/stats'
+import { totalVolume } from '../lib/stats'
 import {
   MESES, atNoon, addDays, addMonths, startOfWeek, monthName,
   WeekGrid, MonthGrid, Heatmap
 } from './WorkoutCalendar'
+import WorkoutSummaryCard from './WorkoutSummaryCard'
 import { Card, Empty, cx } from './ui'
 
 export interface HistoryItem {
@@ -37,6 +40,12 @@ export default function HistoryPanel({ items }: { items: HistoryItem[] }) {
   const [cursor, setCursor] = useState(() => new Date())
   const today = new Date()
   const todayKey = dateKey(today)
+
+  // Para marcar las rutinas que ya no existen en el detalle de cada entreno.
+  const existingRoutineIds = useLiveQuery(
+    async () => new Set((await db.routines.toArray()).filter(r => !r.deletedAt).map(r => r.id)),
+    [], undefined
+  )
 
   /** Cuantas sesiones hay cada dia (puede haber varias). */
   const countByDay = useMemo(() => {
@@ -180,25 +189,12 @@ export default function HistoryPanel({ items }: { items: HistoryItem[] }) {
                 ? 'Cuando termines tu primer entreno aparecera en esta lista.'
                 : 'Prueba a moverte a otro periodo con las flechas, o cambia la vista.'}
             />
-          ) : listItems.map(({ workout, sets, exercises }) => (
-            <Card key={workout.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{workout.routineName}</p>
-                  <p className="text-sm text-ink-500">{formatDateEs(workout.dateKey)}</p>
-                  <p className="mt-1 truncate text-xs capitalize text-ink-500">
-                    {exercises.map(e => e.exerciseName).join(' · ')}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="font-mono text-sm">{Math.round(totalVolume(sets)).toLocaleString('es-ES')} kg</p>
-                  <p className="text-xs text-ink-500">
-                    {sets.filter(s => s.done).length} series
-                    {workout.finishedAt && ` · ${formatDuration(workout.finishedAt - workout.startedAt)}`}
-                  </p>
-                </div>
-              </div>
-            </Card>
+          ) : listItems.map(item => (
+            <WorkoutSummaryCard
+              key={item.workout.id}
+              item={item}
+              existingRoutineIds={existingRoutineIds}
+            />
           ))}
         </div>
       </div>

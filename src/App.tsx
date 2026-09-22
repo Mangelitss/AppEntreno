@@ -13,6 +13,7 @@ import MuscleRadar from './pages/stats/MuscleRadar'
 import BodyDistribution from './pages/stats/BodyDistribution'
 import SetsPerGroup from './pages/stats/SetsPerGroup'
 import MonthlyReport from './pages/stats/MonthlyReport'
+import LifeHistory from './pages/stats/LifeHistory'
 import Body from './pages/Body'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/estadisticas/distribucion-cuerpo" element={<BodyDistribution />} />
             <Route path="/estadisticas/recuento" element={<SetsPerGroup />} />
             <Route path="/estadisticas/informe" element={<MonthlyReport />} />
+            <Route path="/estadisticas/historial-vida" element={<LifeHistory />} />
             <Route path="/medidas" element={<Body />} />
             {/* la ruta antigua sigue viva por si tienes la app instalada en esa pantalla */}
             <Route path="/cuerpo" element={<Body />} />
