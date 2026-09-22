@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Exercise, ProgressionState, Settings, WorkoutSet } from '../db/types'
+import { effectiveRir } from './set-metrics'
 
 /** Series que cuentan: las completadas que no son calentamiento. */
 export function effectiveSets(sets: WorkoutSet[]): WorkoutSet[] {
@@ -66,7 +67,8 @@ export function evaluateSession(
   }
 
   const topWeight = Math.max(...eff.map(s => s.weight))
-  const rirs = eff.map(s => s.rir).filter((r): r is number => r !== null && r !== undefined)
+  // Al fallo y dropset cuentan como RIR 0: llegar al fallo no es "sobra margen".
+  const rirs = eff.map(effectiveRir).filter((r): r is number => r !== null && r !== undefined)
   const minRir = rirs.length ? Math.min(...rirs) : null
 
   const allHitTarget = eff.every(s => s.reps >= targetRepsMax)

@@ -10,6 +10,7 @@ import { db } from './db'
 import { epley1RM } from '../lib/stats'
 import { isRankable } from '../lib/muscle-groups'
 import { muscleContributions } from '../lib/muscle-work'
+import { effectiveRir, setStimulus } from '../lib/set-metrics'
 import { weekKeyOf, type WeekMuscleData } from '../lib/ranks'
 import type { Exercise, WorkoutSet } from './types'
 
@@ -43,9 +44,13 @@ export async function buildWeekMuscleData(): Promise<WeekMuscleData[]> {
     const key = `${weekKey}|${muscle.trim().toLowerCase()}`
     const bucket = buckets.get(key) ?? { effectiveSets: 0, bestE1rm: 0, hardSets: 0, totalSets: 0 }
 
-    bucket.effectiveSets += share
+    // Un dropset acumula mas trabajo que una serie normal: cuenta como algo mas
+    // de una serie para la constancia (ver setStimulus).
+    bucket.effectiveSets += share * setStimulus(set)
     bucket.totalSets += 1
-    if (set.rir !== null && set.rir !== undefined && set.rir <= 2) bucket.hardSets += 1
+    // Al fallo y dropset valen RIR 0 aunque no se anote (effectiveRir).
+    const rir = effectiveRir(set)
+    if (rir !== null && rir <= 2) bucket.hardSets += 1
 
     // El 1RM estimado solo cuenta desde el musculo objetivo: la marca de un
     // press de banca no es la marca del triceps.

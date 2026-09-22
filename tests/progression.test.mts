@@ -64,6 +64,21 @@ test('sin RIR anotado basta con cerrar el rango', () => {
   assert.equal(evaluateSession(sets, 10, 2).ready, true)
 })
 
+test('una serie al fallo cuenta como RIR 0 aunque no se anote', () => {
+  // Cierra el rango pero la ultima es al fallo: no hay margen, no sube.
+  const sets = [set({ reps: 10, rir: null }), set({ reps: 10, rir: null, type: 'failure' })]
+  const e = evaluateSession(sets, 10, 2)
+  assert.equal(e.ready, false)
+  assert.equal(e.minRir, 0)
+})
+
+test('un dropset tambien cuenta como RIR 0', () => {
+  const sets = [set({ reps: 10, rir: null, type: 'drop' })]
+  const e = evaluateSession(sets, 10, 2)
+  assert.equal(e.ready, false)
+  assert.equal(e.minRir, 0)
+})
+
 test('hacen falta dos sesiones seguidas antes de subir', () => {
   const ready = evaluateSession([set({ reps: 10, rir: 3 })], 10, 2)
 
