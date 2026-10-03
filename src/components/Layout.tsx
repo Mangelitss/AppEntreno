@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useSocial } from './SocialProvider'
+import MobileNav from './MobileNav'
 import { cx } from './ui'
 
+/** Barra lateral del ordenador: todas las pestanas. En el movil va MobileNav. */
 const NAV = [
   { to: '/', label: 'Hoy', icon: '⌂' },
   { to: '/rutinas', label: 'Rutinas', icon: '☰' },
@@ -61,29 +63,12 @@ export default function Layout() {
         </div>
       </aside>
 
-      <main className="flex-1 pb-24 md:pb-0">
+      {/* En el movil se deja sitio a la barra de hexagonos, tambien con la zona segura del iPhone. */}
+      <main className="flex-1 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:pb-0">
         <Outlet />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-ink-800 bg-ink-900/95 backdrop-blur safe-bottom md:hidden">
-        {NAV.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            className={({ isActive }) => cx(
-              'flex min-w-0 flex-1 flex-col items-center gap-0.5 pt-2.5 text-[10px] transition-colors',
-              isActive ? 'text-accent' : 'text-ink-500'
-            )}
-          >
-            <span className="relative text-base leading-none">
-              {item.icon}
-              {item.to === '/social' && <Badge count={pending} />}
-            </span>
-            <span className="max-w-full truncate px-0.5">{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <MobileNav pending={pending} />
     </div>
   )
 }

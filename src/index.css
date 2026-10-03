@@ -42,3 +42,25 @@ input[type="number"] { -moz-appearance: textfield; }
 
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .rise { animation: rise .18s ease-out; }
+
+/* Navegacion del movil. El hexagono central gira 60 grados al cambiar de
+   pestana (acaba igual que empezo) mientras el icono nuevo entra de un salto;
+   el triangulo del abanico se queda latiendo mientras esta abierto. */
+@keyframes hex-turn { from { transform: rotate(-60deg) scale(.88); } to { transform: none; } }
+@keyframes hex-pop {
+  0% { opacity: 0; transform: scale(.3) rotate(-25deg); }
+  70% { opacity: 1; transform: scale(1.15) rotate(4deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes tri-glow {
+  from { filter: drop-shadow(0 0 1px rgba(34, 211, 238, .35)); }
+  to { filter: drop-shadow(0 0 7px rgba(34, 211, 238, .95)); }
+}
+.hex-turn { animation: hex-turn .5s cubic-bezier(.34, 1.56, .64, 1); }
+.hex-pop { animation: hex-pop .45s ease-out; }
+.tri-glow { animation: tri-glow 1.1s ease-in-out .5s infinite alternate; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hex-turn, .hex-pop, .tri-glow { animation: none; }
+  .nav-motion { transition-duration: 0s !important; transition-delay: 0s !important; }
+}

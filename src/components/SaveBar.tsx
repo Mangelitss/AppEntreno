@@ -18,7 +18,8 @@ export default function SaveBar({
   if (!dirty) return null
 
   return (
-    <div className="safe-bottom fixed inset-x-0 bottom-[68px] z-40 border-y border-amber-500/30 bg-ink-900/97 backdrop-blur md:bottom-0 md:border-b-0">
+    // En el movil se apoya encima de la barra de hexagonos (76 px, ver MobileNav).
+    <div className="safe-bottom fixed inset-x-0 bottom-[calc(76px_+_env(safe-area-inset-bottom))] z-40 border-y border-amber-500/30 bg-ink-900/97 backdrop-blur md:bottom-0 md:border-b-0">
       <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3 md:px-8">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-amber-300">Cambios sin guardar</p>

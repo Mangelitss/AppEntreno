@@ -99,7 +99,15 @@ export default function Routines() {
       <PageHeader
         title="Rutinas"
         subtitle="Montalas aqui y asignalas a los dias que entrenas"
-        action={<Button variant="primary" onClick={() => setCreating(true)}>Nueva</Button>}
+        action={
+          <div className="flex shrink-0 gap-2">
+            {/* En el movil Ejercicios no tiene hueco en la barra: se entra desde aqui. */}
+            <Button variant="outline" className="md:hidden" onClick={() => navigate('/ejercicios')}>
+              Ejercicios
+            </Button>
+            <Button variant="primary" onClick={() => setCreating(true)}>Nueva</Button>
+          </div>
+        }
       />
 
       <div className={cx('space-y-6 px-4 md:px-8', dirty ? 'pb-40' : 'pb-8')}>
