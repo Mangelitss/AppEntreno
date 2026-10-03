@@ -31,6 +31,8 @@
 //                   forma repetida, no una vez.
 // ---------------------------------------------------------------------------
 
+import { MUSCLE_GROUPS } from './muscle-groups'
+
 export type TierName =
   | 'sin-rango' | 'calibrando' | 'bronce' | 'plata' | 'oro' | 'platino' | 'diamante' | 'elite'
 
@@ -286,7 +288,11 @@ export function computeMuscleRanks(data: WeekMuscleData[], todayWeek: string): M
   return ranks.sort((a, b) => b.points - a.points)
 }
 
-function buildRank(muscle: string, points: number, weeksTrained: number, weeksIdle: number): MuscleRank {
+/**
+ * El rango de un musculo a partir de sus puntos y semanas. Se exporta porque
+ * Social lo reconstruye con los puntos que publica cada amigo.
+ */
+export function buildRank(muscle: string, points: number, weeksTrained: number, weeksIdle: number): MuscleRank {
   if (weeksTrained === 0) {
     return {
       muscle, points: 0, tier: 'sin-rango', label: 'Sin rango', color: SIN_RANGO_COLOR,
@@ -322,4 +328,64 @@ export const ROMAN = ['', 'I', 'II', 'III']
 export function rankLabel(rank: MuscleRank): string {
   if (rank.division === null) return rank.label
   return `${rank.label.toUpperCase()} ${ROMAN[rank.division]}`
+}
+
+// ---------------------------------------------------------------------------
+// Por grupo y en el dibujo
+// ---------------------------------------------------------------------------
+
+export interface GroupRank {
+  id: string
+  label: string
+  /** media de puntos de los musculos con datos */
+  points: number
+  ranked: number
+  total: number
+  color: string
+  title: string
+  muscles: MuscleRank[]
+}
+
+/**
+ * El rango del grupo sale de la media de puntos de sus musculos, no de la
+ * media de sus rangos: promediar rangos pierde precision y da saltos raros.
+ * Solo cuentan los que tienen datos; al lado se ve cuantos son de cuantos.
+ */
+export function groupRanks(ranks: MuscleRank[]): GroupRank[] {
+  const byMuscle = new Map(ranks.map(r => [r.muscle, r]))
+
+  return MUSCLE_GROUPS.map(group => {
+    const muscles = group.muscles
+      .map(m => byMuscle.get(m))
+      .filter((r): r is MuscleRank => Boolean(r))
+      .sort((a, b) => b.points - a.points)
+
+    const withRank = muscles.filter(m => m.division !== null)
+    const points = withRank.length
+      ? Math.round(withRank.reduce((acc, m) => acc + m.points, 0) / withRank.length)
+      : 0
+
+    const { tier, division } = tierFor(points)
+    return {
+      id: group.id,
+      label: group.label,
+      points,
+      ranked: withRank.length,
+      total: group.muscles.length,
+      color: tier?.color ?? (muscles.length ? CALIBRANDO_COLOR : SIN_RANGO_COLOR),
+      title: tier && division
+        ? `${tier.label.toUpperCase()} ${ROMAN[division]}`
+        : muscles.length ? 'Calibrando' : 'Sin rango',
+      muscles
+    }
+  })
+}
+
+/** Color de cada musculo en el mapa corporal: los que tienen rango o estan calibrando. */
+export function rankColors(ranks: MuscleRank[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const rank of ranks) {
+    if (rank.division !== null || rank.tier === 'calibrando') map.set(rank.muscle, rank.color)
+  }
+  return map
 }

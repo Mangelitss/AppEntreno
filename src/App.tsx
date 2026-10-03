@@ -18,11 +18,15 @@ import Body from './pages/Body'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import Auth from './pages/Auth'
+import Social from './pages/Social'
+import FriendProfile from './pages/FriendProfile'
+import AddFriendLink from './pages/AddFriendLink'
 import { ensureCatalog } from './db/catalog'
 import { ensureSchedule } from './db/schedule'
 import { ensureCardioCatalog } from './db/cardio-catalog'
 import { AuthProvider, useAuth } from './components/AuthProvider'
 import { SyncProvider } from './components/SyncProvider'
+import { SocialProvider } from './components/SocialProvider'
 
 /** El arranque se comparte entre montajes para que nunca corra dos veces a la vez. */
 let bootstrap: Promise<void> | null = null
@@ -74,6 +78,7 @@ export default function App() {
   return (
     <AuthProvider>
       <SyncProvider>
+        <SocialProvider>
         <AuthGate>
         <Routes>
           <Route element={<Layout />}>
@@ -92,6 +97,10 @@ export default function App() {
             <Route path="/medidas" element={<Body />} />
             {/* la ruta antigua sigue viva por si tienes la app instalada en esa pantalla */}
             <Route path="/cuerpo" element={<Body />} />
+            <Route path="/social" element={<Social />} />
+            <Route path="/social/amigo/:friendUid" element={<FriendProfile />} />
+            {/* el enlace que se comparte desde el perfil para que te anadan */}
+            <Route path="/amigo/:code" element={<AddFriendLink />} />
             <Route path="/perfil" element={<Profile />} />
             <Route path="/entrar" element={<Auth />} />
             <Route path="/ajustes" element={<Settings />} />
@@ -100,6 +109,7 @@ export default function App() {
           </Route>
         </Routes>
         </AuthGate>
+        </SocialProvider>
       </SyncProvider>
     </AuthProvider>
   )

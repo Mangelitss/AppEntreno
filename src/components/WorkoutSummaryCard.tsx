@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react'
 import type { Workout, WorkoutExercise, WorkoutSet } from '../db/types'
 import { formatDateEs, formatDuration, formatKg, totalVolume } from '../lib/stats'
-import { formatCardioDuration } from '../lib/cardio'
+import { formatCardioDuration, isCardioSet } from '../lib/cardio'
 import { Card, Pill, cx } from './ui'
 
 export interface WorkoutSummary {
@@ -21,18 +21,51 @@ export interface WorkoutSummary {
 
 const SET_LABEL: Record<string, string> = { warmup: 'C', failure: 'F', drop: 'D' }
 
-/** Una serie de cardio no lleva carga: se reconoce por sus campos propios. */
-function isCardioSet(s: WorkoutSet): boolean {
-  return s.durationSec != null || s.distanceKm != null || s.kcal != null
-}
+/** Lo que hace falta de una serie para pintarla: vale una del historial o una de un post. */
+type SetLike = Pick<WorkoutSet, 'type' | 'weight' | 'reps' | 'rir' | 'durationSec' | 'distanceKm' | 'kcal' | 'avgHr'>
+  & { done?: 0 | 1 }
 
-function cardioLine(s: WorkoutSet): string {
+function cardioLine(s: SetLike): string {
   const parts: string[] = []
   if (s.durationSec) parts.push(formatCardioDuration(s.durationSec))
   if (s.distanceKm) parts.push(`${s.distanceKm} km`)
   if (s.kcal) parts.push(`${s.kcal} kcal`)
   if (s.avgHr) parts.push(`${s.avgHr} ppm`)
   return parts.join(' · ') || '—'
+}
+
+/**
+ * Una serie dentro de un ejercicio: su numero o su marca (calentamiento, fallo,
+ * dropset) y lo que se hizo. La comparten el historial y los posts de Social.
+ */
+export function SetRow({ set, index }: { set: SetLike; index: number }) {
+  const done = set.done !== 0
+  return (
+    <div
+      className={cx(
+        'flex items-center gap-2 rounded-lg px-2 py-1 text-sm tabular-nums',
+        done ? 'bg-emerald-500/5' : 'opacity-60'
+      )}
+    >
+      <span
+        className={cx(
+          'flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs',
+          SET_LABEL[set.type] ? 'bg-ink-800 text-ink-300' : 'bg-ink-850 text-ink-500'
+        )}
+      >
+        {SET_LABEL[set.type] ?? index + 1}
+      </span>
+      {isCardioSet(set) ? (
+        <span className="text-ink-200">{cardioLine(set)}</span>
+      ) : (
+        <span className="text-ink-200">
+          {formatKg(set.weight)} kg × {set.reps}
+          {set.rir != null && <span className="text-ink-500"> · RIR {set.rir}</span>}
+        </span>
+      )}
+      {!done && <span className="ml-auto text-[11px] text-ink-500">sin hacer</span>}
+    </div>
+  )
 }
 
 export default function WorkoutSummaryCard({
@@ -106,33 +139,7 @@ export default function WorkoutSummaryCard({
                   <p className="text-xs text-ink-500">Sin series registradas.</p>
                 ) : (
                   <div className="space-y-1">
-                    {linkSets.map((s, i) => (
-                      <div
-                        key={s.id}
-                        className={cx(
-                          'flex items-center gap-2 rounded-lg px-2 py-1 text-sm tabular-nums',
-                          s.done === 1 ? 'bg-emerald-500/5' : 'opacity-60'
-                        )}
-                      >
-                        <span
-                          className={cx(
-                            'flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs',
-                            SET_LABEL[s.type] ? 'bg-ink-800 text-ink-300' : 'bg-ink-850 text-ink-500'
-                          )}
-                        >
-                          {SET_LABEL[s.type] ?? i + 1}
-                        </span>
-                        {isCardioSet(s) ? (
-                          <span className="text-ink-200">{cardioLine(s)}</span>
-                        ) : (
-                          <span className="text-ink-200">
-                            {formatKg(s.weight)} kg × {s.reps}
-                            {s.rir != null && <span className="text-ink-500"> · RIR {s.rir}</span>}
-                          </span>
-                        )}
-                        {s.done !== 1 && <span className="ml-auto text-[11px] text-ink-500">sin hacer</span>}
-                      </div>
-                    ))}
+                    {linkSets.map((s, i) => <SetRow key={s.id} set={s} index={i} />)}
                   </div>
                 )}
                 {link.notes && <p className="mt-1 text-xs italic text-ink-500">{link.notes}</p>}

@@ -63,32 +63,43 @@ function clean<T extends object>(row: T): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 // Imagenes
 //
-// No se sincronizan. Firebase Storage exige plan de pago, y meterlas en el
-// propio documento chocaria con el limite de 1 MiB de Firestore y se pagaria
-// en cada lectura. Asi que las fotos que subes se quedan en el dispositivo.
+// Las fotos subidas no se sincronizan. Firebase Storage exige plan de pago, y
+// meterlas en el propio documento chocaria con el limite de 1 MiB de
+// Firestore y se pagaria en cada lectura. Asi que se quedan en el dispositivo.
 //
-// Lo importante es que al bajar un documento no borren las que tengas aqui:
-// por eso se quitan al subir y se ignoran al recibir, en vez de viajar vacias.
+// Un enlace (https://...) es otra cosa: es texto corto y si viaja. Es lo que
+// permite poner una foto de perfil que vean tus amigos y tus otros moviles.
+//
+// Lo importante es que al bajar un documento no borren las fotos que tengas
+// aqui: por eso se quitan al subir y se ignoran al recibir, en vez de viajar
+// vacias. Si lo que llega es un enlace, ese si manda.
 // ---------------------------------------------------------------------------
 
-/** Campos con foto de cada tabla, los unicos que se quedan en casa. */
+/** Campos con foto de cada tabla: si llevan una foto subida, se quedan en casa. */
 const LOCAL_ONLY: Partial<Record<CollectionName, string[]>> = {
   exercises: ['imageData', 'gifData'],
   routines: ['imageData'],
   profile: ['avatarUrl']
 }
 
-/** Quita las fotos de una fila antes de enviarla. */
+/** Una foto subida desde el movil, que viaja como data URL. */
+function isUploadedImage(value: unknown): boolean {
+  return typeof value === 'string' && value.startsWith('data:')
+}
+
+/** Quita las fotos subidas de una fila antes de enviarla. Los enlaces se quedan. */
 function withoutImages(table: CollectionName, row: Record<string, unknown>): Record<string, unknown> {
   const fields = LOCAL_ONLY[table]
   if (!fields) return row
 
   const copy = { ...row }
-  for (const field of fields) delete copy[field]
+  for (const field of fields) {
+    if (isUploadedImage(copy[field])) delete copy[field]
+  }
   return copy
 }
 
-/** Conserva las fotos locales al aplicar lo que llega del servidor. */
+/** Conserva las fotos locales al aplicar lo que llega del servidor, salvo que llegue un enlace. */
 function keepingImages<T extends object>(
   table: CollectionName,
   remote: T,
@@ -99,6 +110,9 @@ function keepingImages<T extends object>(
 
   const merged = { ...remote } as Record<string, unknown>
   for (const field of fields) {
+    const theirs = merged[field]
+    if (typeof theirs === 'string' && theirs !== '') continue
+
     const mine = (local as Record<string, unknown>)[field]
     if (mine !== undefined && mine !== null) merged[field] = mine
   }
@@ -273,4 +287,4 @@ export async function pendingCount(): Promise<number> {
   return total
 }
 
-export { isWorthSyncing, COLLECTIONS }
+export { isWorthSyncing, COLLECTIONS, withoutImages, keepingImages }

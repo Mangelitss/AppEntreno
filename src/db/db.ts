@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   BodyEntry, Exercise, Profile, ProgressionState, Routine, RoutineItem,
-  ScheduleDay, Settings, SyncState, Workout, WorkoutExercise, WorkoutSet
+  ScheduleDay, Settings, SocialState, SyncState, Workout, WorkoutExercise, WorkoutSet
 } from './types'
 
 export class AppEntrenoDB extends Dexie {
@@ -17,6 +17,7 @@ export class AppEntrenoDB extends Dexie {
   settings!: Table<Settings, string>
   profile!: Table<Profile, string>
   syncState!: Table<SyncState, string>
+  socialState!: Table<SocialState, string>
 
   constructor() {
     super('appentreno')
@@ -38,6 +39,9 @@ export class AppEntrenoDB extends Dexie {
 
     // v3 anade la marca de sincronizacion.
     this.version(3).stores({ syncState: 'id' })
+
+    // v4 anade por donde iba la publicacion en Social, una fila por cuenta.
+    this.version(4).stores({ socialState: 'uid' })
   }
 }
 
@@ -99,6 +103,30 @@ export async function getSyncState(): Promise<SyncState> {
 export async function saveSyncState(patch: Partial<SyncState>): Promise<void> {
   const current = await getSyncState()
   await db.syncState.put({ ...current, ...patch, id: 'sync' })
+}
+
+export function emptySocialState(uid: string): SocialState {
+  return {
+    uid,
+    friendCode: null,
+    since: null,
+    postsAt: 0,
+    statsAt: 0,
+    statsRows: null,
+    statsHash: null,
+    profileHash: null,
+    lastPublishedAt: null,
+    lastError: null
+  }
+}
+
+export async function getSocialState(uid: string): Promise<SocialState> {
+  return (await db.socialState.get(uid)) ?? emptySocialState(uid)
+}
+
+export async function saveSocialState(uid: string, patch: Partial<SocialState>): Promise<void> {
+  const current = await getSocialState(uid)
+  await db.socialState.put({ ...current, ...patch, uid })
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {

@@ -71,6 +71,13 @@ export function paceLabel(
   return `${fixed} ${style === 'pace100' ? 'min/100m' : 'min/km'}`
 }
 
+/** Una serie de cardio no lleva carga: se reconoce por sus campos propios. */
+export function isCardioSet(set: {
+  durationSec?: number | null; distanceKm?: number | null; kcal?: number | null
+}): boolean {
+  return set.durationSec != null || set.distanceKm != null || set.kcal != null
+}
+
 /** Segundos a "1h 05m" o "45 min", para leerlo de un vistazo. */
 export function formatCardioDuration(seconds: number | null | undefined): string {
   if (!seconds || seconds <= 0) return '—'

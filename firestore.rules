@@ -9,6 +9,9 @@ rules_version = '2';
 // El catalogo de 1.324 ejercicios no esta aqui a proposito: es igual para
 // todos y cada movil se lo descarga del JSON. Solo suben los ejercicios que
 // creas tu y los del catalogo que hayas editado.
+//
+// Social no abre nada de eso. Cada uno publica aparte un resumen de lo suyo
+// (perfil, posts y rangos) y solo sus amigos pueden leerlo.
 // ===========================================================================
 
 service cloud.firestore {
@@ -18,11 +21,30 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
+    function amistad(a, b) {
+      return /databases/$(database)/documents/friendships/$(a + '_' + b);
+    }
+
+    // Solo cuenta una amistad aceptada: una solicitud sin contestar no da
+    // acceso a nada. El documento puede estar en cualquiera de los dos
+    // sentidos, segun quien la pidiera.
+    function aceptada(a, b) {
+      return exists(amistad(a, b)) && get(amistad(a, b)).data.status == 'aceptada';
+    }
+
     function sonAmigos(otro) {
-      return request.auth != null && (
-        exists(/databases/$(database)/documents/friendships/$(request.auth.uid + '_' + otro))
-        || exists(/databases/$(database)/documents/friendships/$(otro + '_' + request.auth.uid))
-      );
+      return request.auth != null
+        && (aceptada(request.auth.uid, otro) || aceptada(otro, request.auth.uid));
+    }
+
+    // Un enlace a una foto, o nada. Las fotos subidas no caben aqui a proposito.
+    function esEnlace(valor) {
+      return valor == null
+        || (valor is string && valor.size() <= 2048 && valor.matches('https?://.+'));
+    }
+
+    function esNombre(valor) {
+      return valor == null || (valor is string && valor.size() <= 60);
     }
 
     // ---------------------------------------------------------------------
@@ -34,15 +56,41 @@ service cloud.firestore {
       match /{coleccion}/{documento} {
         allow read, write: if esElDueno(uid);
       }
+
+      // Posts de Social: un resumen de cada entreno terminado. Los escribe el
+      // dueno con la regla de arriba; aqui solo se abre la lectura a sus amigos.
+      match /posts/{postId} {
+        allow read: if sonAmigos(uid);
+      }
     }
 
     // ---------------------------------------------------------------------
-    // Perfil publico: nombre y avatar. Lo lee cualquiera que haya entrado,
-    // porque es lo que hara falta para buscar y anadir amigos.
+    // Perfil publico: nombre, enlace de la foto y codigo de amigo.
+    //
+    // Se puede abrir el de alguien cuyo uid conoces (por su codigo, o porque
+    // ya es tu amigo), pero no listarlos: nadie puede recorrer quien usa la app.
     // ---------------------------------------------------------------------
     match /profiles/{uid} {
-      allow read: if request.auth != null;
-      allow write: if esElDueno(uid);
+      allow get: if request.auth != null;
+      allow create, update: if esElDueno(uid)
+        && request.resource.data.uid == uid
+        && esNombre(request.resource.data.get('displayName', null))
+        && esEnlace(request.resource.data.get('avatarUrl', null));
+      allow delete: if esElDueno(uid);
+    }
+
+    // ---------------------------------------------------------------------
+    // Codigos de amigo: de quien es cada uno.
+    //
+    // Se consultan de uno en uno, nunca en lista, y una vez creados no se
+    // tocan: crear uno que ya existe seria actualizarlo, y eso esta cerrado.
+    // ---------------------------------------------------------------------
+    match /friendCodes/{code} {
+      allow get: if request.auth != null;
+      allow create: if request.auth != null
+        && code.matches('^[2-9A-HJKMNP-Z]{8}$')
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt']);
     }
 
     // ---------------------------------------------------------------------
@@ -79,8 +127,27 @@ service cloud.firestore {
         request.auth.uid == resource.data.requesterId
         || request.auth.uid == resource.data.addresseeId
       );
-      allow create: if esElDueno(request.resource.data.requesterId);
-      allow update, delete: if request.auth != null && (
+
+      // Se pide en tu nombre, a otra persona, y nace pendiente. Si el otro ya
+      // te la habia pedido a ti, no se crea la inversa: lo que toca es aceptarla.
+      allow create: if request.auth != null
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.addresseeId is string
+        && request.resource.data.addresseeId != request.auth.uid
+        && id == request.auth.uid + '_' + request.resource.data.addresseeId
+        && request.resource.data.status == 'pendiente'
+        && request.resource.data.keys().hasOnly(['requesterId', 'addresseeId', 'status', 'createdAt', 'acceptedAt'])
+        && !exists(amistad(request.resource.data.addresseeId, request.auth.uid));
+
+      // Aceptar es cosa del destinatario, y solo cambia el estado y la fecha.
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.addresseeId
+        && resource.data.status == 'pendiente'
+        && request.resource.data.status == 'aceptada'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt']);
+
+      // Rechazar, cancelar o dejar de ser amigos es borrarla, y vale cualquiera de los dos.
+      allow delete: if request.auth != null && (
         request.auth.uid == resource.data.requesterId
         || request.auth.uid == resource.data.addresseeId
       );

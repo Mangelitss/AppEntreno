@@ -1,24 +1,9 @@
 import { useMemo, useState } from 'react'
-import { MUSCLE_GROUPS } from '../lib/muscle-groups'
 import { muscleEs } from '../lib/muscles'
-import {
-  CALIBRANDO_COLOR, SIN_RANGO_COLOR, rankLabel, tierFor, nextStep, type MuscleRank
-} from '../lib/ranks'
+import { groupRanks, rankColors, rankLabel, nextStep, type MuscleRank } from '../lib/ranks'
 import BodyMap from './BodyMap'
 import GroupBadge from './GroupBadge'
 import { Card, Empty, cx } from './ui'
-
-interface GroupRank {
-  id: string
-  label: string
-  /** media de puntos de los musculos con datos */
-  points: number
-  ranked: number
-  total: number
-  color: string
-  title: string
-  muscles: MuscleRank[]
-}
 
 /** Insignia con la inicial del rango, al estilo de los juegos. */
 function Badge({ color, letter, dim }: { color: string; letter: string; dim?: boolean }) {
@@ -51,45 +36,8 @@ export default function RankPanel({ ranks }: { ranks: MuscleRank[] }) {
   const [selected, setSelected] = useState<string | null>(null)
 
   const byMuscle = useMemo(() => new Map(ranks.map(r => [r.muscle, r])), [ranks])
-
-  /**
-   * El rango del grupo sale de la media de puntos de sus musculos, no de la
-   * media de sus rangos: promediar rangos pierde precision y da saltos raros.
-   * Solo cuentan los que tienen datos; al lado se ve cuantos son de cuantos.
-   */
-  const groups: GroupRank[] = useMemo(() => MUSCLE_GROUPS.map(group => {
-    const muscles = group.muscles
-      .map(m => byMuscle.get(m))
-      .filter((r): r is MuscleRank => Boolean(r))
-      .sort((a, b) => b.points - a.points)
-
-    const withRank = muscles.filter(m => m.division !== null)
-    const points = withRank.length
-      ? Math.round(withRank.reduce((acc, m) => acc + m.points, 0) / withRank.length)
-      : 0
-
-    const { tier, division } = tierFor(points)
-    return {
-      id: group.id,
-      label: group.label,
-      points,
-      ranked: withRank.length,
-      total: group.muscles.length,
-      color: tier?.color ?? (muscles.length ? CALIBRANDO_COLOR : SIN_RANGO_COLOR),
-      title: tier && division
-        ? `${tier.label.toUpperCase()} ${['', 'I', 'II', 'III'][division]}`
-        : muscles.length ? 'Calibrando' : 'Sin rango',
-      muscles
-    }
-  }), [byMuscle])
-
-  const colors = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const rank of ranks) {
-      if (rank.division !== null || rank.tier === 'calibrando') map.set(rank.muscle, rank.color)
-    }
-    return map
-  }, [ranks])
+  const groups = useMemo(() => groupRanks(ranks), [ranks])
+  const colors = useMemo(() => rankColors(ranks), [ranks])
 
   if (ranks.length === 0) {
     return (

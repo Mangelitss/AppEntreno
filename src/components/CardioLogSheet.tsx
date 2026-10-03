@@ -11,6 +11,7 @@ import {
 import { BACKFILL_DAYS, shiftDateKey } from '../lib/streak'
 import ExerciseThumb from './ExerciseThumb'
 import ExercisePicker from './ExercisePicker'
+import { useSync } from './SyncProvider'
 import { Button, Card, Input, Label, Sheet, cx } from './ui'
 
 /** Lo que se esta rellenando de una actividad, en unidades de teclear (minutos, km...). */
@@ -59,6 +60,7 @@ export default function CardioLogSheet({
   initial: Array<{ exerciseId: string; minutes: number }>
   onSaved?: (workoutId: string) => void
 }) {
+  const { syncNow } = useSync()
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [day, setDay] = useState(dateKey())
   const [notes, setNotes] = useState('')
@@ -97,6 +99,8 @@ export default function CardioLogSheet({
     setSaving(true)
     const workoutId = await logCardioWorkout({ routineId, routineName, dateKey: day, notes, entries })
     setSaving(false)
+    // Como al terminar un entreno: que suba (y salga en Social) sin esperar.
+    void syncNow()
     onClose()
     onSaved?.(workoutId)
   }

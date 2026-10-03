@@ -233,6 +233,31 @@ export interface SyncState {
   lastError: string | null
 }
 
+/**
+ * Por donde iba la publicacion en Social, una fila por cuenta.
+ *
+ * Va por uid y no dentro de SyncState porque si en el movil entra otra
+ * persona, lo publicado por la primera no puede confundirse con lo suyo.
+ */
+export interface SocialState {
+  uid: string
+  /** tu codigo de amigo, sin guion: K7Q2XM9P */
+  friendCode: string | null
+  /** desde cuando se publica: lo entrenado antes de activar Social no sale */
+  since: number | null
+  /** ultimo updatedAt de entrenos ya convertido en posts */
+  postsAt: number
+  /** ultimo updatedAt del historial con el que se calcularon los rangos publicados */
+  statsAt: number
+  /** filas de entrenos en ese momento: "Borrar historial" no deja otro rastro */
+  statsRows: number | null
+  /** huella de lo ultimo publicado, para no reescribir lo que no cambia */
+  statsHash: string | null
+  profileHash: string | null
+  lastPublishedAt: number | null
+  lastError: string | null
+}
+
 export interface Settings {
   id: 'settings'
   /** RIR minimo en la ultima serie efectiva para considerar que puedes subir */

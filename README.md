@@ -187,7 +187,8 @@ Cómo funciona, en corto:
   documento chocaría con el límite de 1 MiB de Firestore y se pagaría en cada lectura. Así que
   las fotos que subes —avatares, portadas de rutina, imágenes de ejercicios propios— se quedan
   en el dispositivo. Al recibir un documento del servidor **se conserva la foto local** en vez de
-  borrarla, que es lo que pasaría si viajara vacía.
+  borrarla, que es lo que pasaría si viajara vacía. Un **enlace** (`https://…`) sí viaja: es
+  texto corto, y es lo que permite tener una foto de perfil que vean tus amigos.
 - **Si en el mismo móvil entra otra persona**, se detecta por `ownerUid` y se limpia la base local
   antes de bajar nada, para que no se mezclen dos historiales.
 
@@ -197,12 +198,70 @@ La pestaña **Perfil** reúne nombre y avatar, un resumen de tu actividad (entre
 racha y tiempo acumulado, todo calculado), tus datos corporales —los mismos que usa Medidas— y
 los ajustes de cuenta. Los ajustes de la app se abren desde el botón de arriba.
 
-### Sobre lo social
+Con sesión iniciada aparece además la tarjeta de **Amigos**: el contador (al tocarlo se
+gestionan), tu código y las solicitudes pendientes. La foto que verán tus amigos es la del
+**enlace** que pongas en *Editar perfil*; la que subes tocando el avatar se queda en el móvil.
 
-Las reglas ya contemplan `friendships`, `sharedRoutines` y `publicStats`, aunque no haya pantalla
-todavía. Ese último merece explicación: en Firestore no hay `JOIN`, así que para comparar
-estadísticas con un amigo no se leen sus entrenos crudos —sería caro y expondría de más— sino un
-documento pequeño con unas pocas cifras ya calculadas que cada uno publica.
+## Social
+
+La pestaña **Social** es el feed de los entrenos que van terminando tus amigos. Necesita cuenta:
+en modo local o sin sesión solo explica cómo activarla.
+
+### Amigos
+
+- **Código de amigo.** Cada cuenta tiene uno de 8 caracteres (`K7Q2-XM9P`), sin los que se
+  confunden al dictarlos (0/O, 1/I/L). Se copia o se comparte como enlace (`/amigo/K7Q2XM9P`),
+  que abre la app con el código ya buscado.
+- **La amistad es mutua.** Mandas la solicitud, la otra persona la acepta y desde ese momento
+  los dos veis los entrenos y los rangos del otro. Si esa persona ya te había mandado la suya, no
+  se crea otra al revés: lo que toca es aceptarla. Rechazar, cancelar o dejar de ser amigos es lo
+  mismo por dentro, borrar la solicitud, y lo puede hacer cualquiera de los dos.
+- Las solicitudes nuevas llegan en directo y se marcan con un número sobre el icono de Social.
+
+### Qué se publica
+
+Cada entreno que terminas **a partir de activar Social** se publica solo. Lo anterior no sale: el
+día que entras con esta versión se apunta la fecha (`socialSince`) y todo se mide desde ahí.
+
+Un post es un **resumen congelado**, no el entreno: nombre de la rutina, duración, kilos, series,
+el trabajo por músculo ya calculado y la lista de ejercicios con cada serie (kg × reps, RIR y las
+marcas de calentamiento, fallo y dropset). Así tu amigo no necesita tu catálogo ni tus ejercicios
+propios para pintarlo. El muñeco usa la escala de *Distribución del cuerpo*: rojo el músculo que
+más trabajó ese día y hacia el verde el resto. Las sesiones de cardio publican duración,
+distancia y kcal en vez de muñeco.
+
+Si corriges un entreno ya publicado, el post se actualiza; si lo borras, desaparece. Se publica
+detrás de cada sincronización, mirando solo lo que ha cambiado desde la vez anterior, y al
+terminar un entreno se lanza una sincronización en el momento.
+
+### Perfil de un amigo
+
+Su actividad (entrenos, racha y mejor racha), su muñeco de rangos y los seis grupos. **Comparar
+con los míos** añade un selector para alternar el muñeco entre sus rangos y los tuyos, y pone los
+grupos en dos columnas apagando en cada uno a quien va por detrás.
+
+Sus rangos no se calculan con sus entrenos —no se pueden leer—: cada uno publica sus **puntos**
+ya calculados, y quien los mira les aplica el abandono de las semanas pasadas desde entonces. Sin
+eso, un amigo que deja la app vería su Diamante congelado para siempre. Con la racha pasa igual:
+se apaga sola si ha pasado el hueco máximo desde su último entreno.
+
+### Cómo se guarda
+
+En Firestore no hay `JOIN`, así que nadie lee los entrenos crudos de nadie —sería caro y
+expondría de más—. Cada uno publica aparte un resumen de lo suyo y solo sus amigos pueden leerlo:
+
+| Documento | Qué hay | Quién lo lee |
+|---|---|---|
+| `profiles/{uid}` | nombre, enlace de la foto y código | cualquiera con cuenta, de uno en uno (no se pueden listar) |
+| `friendCodes/{código}` | de quién es cada código | cualquiera con cuenta, de uno en uno |
+| `friendships/{a}_{b}` | la solicitud de *a* para *b*, pendiente o aceptada | los dos implicados |
+| `users/{uid}/posts/{entreno}` | un post por entreno terminado | sus amigos |
+| `publicStats/{uid}` | puntos de rango y actividad | sus amigos |
+
+Las reglas de `firestore.rules` exigen que la amistad esté **aceptada**: una solicitud sin
+contestar no da acceso a nada. Al cambiarlas hay que desplegarlas
+(`firebase deploy --only firestore:rules`); hasta entonces Social avisa de que las reglas no le
+dejan escribir.
 
 ## Medidas
 

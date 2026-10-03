@@ -13,6 +13,7 @@ import CardioEntry from '../components/CardioEntry'
 import ExerciseThumb from '../components/ExerciseThumb'
 import ExercisePicker from '../components/ExercisePicker'
 import RestTimer from '../components/RestTimer'
+import { useSync } from '../components/SyncProvider'
 import { Button, Card, Pill, Sheet, cx } from '../components/ui'
 import type { SetType, WorkoutSet } from '../db/types'
 
@@ -91,6 +92,7 @@ function IncrementEditor({
 export default function Train() {
   const { workoutId = '' } = useParams()
   const navigate = useNavigate()
+  const { syncNow } = useSync()
 
   const [index, setIndex] = useState(0)
   const [rest, setRest] = useState<Rest | null>(null)
@@ -204,6 +206,8 @@ export default function Train() {
   async function confirmFinish() {
     setSaving(true)
     await commitWorkout(workoutId, overrides)
+    // Sube el entreno (y su post de Social) ya, sin esperar a la siguiente vuelta del sync.
+    void syncNow()
     navigate('/')
   }
 

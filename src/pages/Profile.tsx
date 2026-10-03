@@ -9,8 +9,10 @@ import { ageFrom } from '../lib/body'
 import { computeStreak } from '../lib/streak'
 import { formatDuration } from '../lib/stats'
 import { dataUrlSizeKb, fileToStoredImage, ImageTooLargeError } from '../lib/image'
+import { isLink } from '../lib/social'
 import { useAuth } from '../components/AuthProvider'
 import { useSync } from '../components/SyncProvider'
+import { FriendsCard } from '../components/Friends'
 import { PageHeader } from '../components/Layout'
 import { Button, Card, Input, Label, Pill, Sheet } from '../components/ui'
 import type { Profile as ProfileRow } from '../db/types'
@@ -31,7 +33,8 @@ export default function Profile() {
   const cloud = useSync()
   const [editing, setEditing] = useState(false)
   const [account, setAccount] = useState(false)
-  const [form, setForm] = useState({ name: '', height: '', sex: '', birthDate: '' })
+  const [form, setForm] = useState({ name: '', height: '', sex: '', birthDate: '', avatarLink: '' })
+  const [formError, setFormError] = useState('')
   const [accountForm, setAccountForm] = useState({ email: '', password: '' })
   const [status, setStatus] = useState('')
   const avatarInput = useRef<HTMLInputElement>(null)
@@ -55,7 +58,8 @@ export default function Profile() {
       name: profile.displayName ?? displayNameOf(auth.status === 'dentro' ? auth.user : null) ?? '',
       height: profile.heightCm != null ? String(profile.heightCm) : '',
       sex: profile.sex ?? '',
-      birthDate: profile.birthDate ?? ''
+      birthDate: profile.birthDate ?? '',
+      avatarLink: isLink(profile.avatarUrl) ? profile.avatarUrl : ''
     })
   }, [profile, auth])
 
@@ -72,11 +76,23 @@ export default function Profile() {
 
   async function saveForm() {
     const height = Number(form.height)
+    const link = form.avatarLink.trim()
+    if (link && !isLink(link)) {
+      setFormError('El enlace de la foto tiene que empezar por https://')
+      return
+    }
+    setFormError('')
+
+    // Un enlace sustituye a la foto subida; borrar el enlace deja la foto subida
+    // si la habia, porque esa no se ha tocado.
+    const avatarUrl = link || (isLink(profile?.avatarUrl) ? null : profile?.avatarUrl ?? null)
+
     await saveProfile({
       displayName: form.name.trim() || null,
       heightCm: form.height.trim() === '' || !Number.isFinite(height) ? null : height,
       sex: (form.sex || null) as ProfileRow['sex'],
-      birthDate: form.birthDate || null
+      birthDate: form.birthDate || null,
+      avatarUrl
     })
 
     // El nombre tambien vive en la cuenta, que es lo que veran tus amigos.
@@ -90,7 +106,11 @@ export default function Profile() {
       setStatus('Procesando foto…')
       const dataUrl = await fileToStoredImage(file, 256)
       await saveProfile({ avatarUrl: dataUrl })
-      setStatus(`Guardada (${dataUrlSizeKb(dataUrl)} KB)`)
+      setStatus(
+        auth.status === 'dentro'
+          ? `Guardada (${dataUrlSizeKb(dataUrl)} KB). Solo se ve en este dispositivo: para que la vean tus amigos, pon un enlace en Editar perfil`
+          : `Guardada (${dataUrlSizeKb(dataUrl)} KB)`
+      )
     } catch (error) {
       setStatus(error instanceof ImageTooLargeError ? error.message : 'No se pudo procesar la foto')
     }
@@ -160,12 +180,14 @@ export default function Profile() {
           />
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Editar perfil</Button>
+            <Button variant="outline" size="sm" onClick={() => { setFormError(''); setEditing(true) }}>Editar perfil</Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/medidas')}>Ver medidas</Button>
           </div>
 
           {status && <p className="mt-3 text-xs text-accent">{status}</p>}
         </Card>
+
+        {isCloudEnabled() && auth.status === 'dentro' && <FriendsCard />}
 
         {activity && (
           <Card className="p-5">
@@ -260,6 +282,19 @@ export default function Profile() {
           </label>
 
           <label className="block space-y-1">
+            <Label>Enlace de tu foto</Label>
+            <Input
+              type="url" inputMode="url" placeholder="https://…"
+              value={form.avatarLink} className="w-full"
+              onChange={e => setForm(f => ({ ...f, avatarLink: e.target.value }))}
+            />
+            <span className="block text-xs text-ink-500">
+              Es la foto que verán tus amigos. La que subes tocando el avatar se queda en este
+              dispositivo.
+            </span>
+          </label>
+
+          <label className="block space-y-1">
             <Label>Altura (cm)</Label>
             <Input
               type="number" inputMode="numeric" min={80} max={250}
@@ -296,6 +331,7 @@ export default function Profile() {
             resto de calculos.
           </p>
 
+          {formError && <p className="text-xs text-amber-300">{formError}</p>}
           <Button variant="primary" className="w-full" onClick={() => void saveForm()}>Guardar</Button>
         </div>
       </Sheet>

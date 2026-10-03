@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useSocial } from './SocialProvider'
 import { cx } from './ui'
 
 const NAV = [
@@ -8,11 +9,24 @@ const NAV = [
   { to: '/progreso', label: 'Progreso', icon: '↗' },
   { to: '/estadisticas', label: 'Estadisticas', icon: '▦' },
   { to: '/medidas', label: 'Medidas', icon: '⚖' },
+  { to: '/social', label: 'Social', icon: '♡' },
   { to: '/perfil', label: 'Perfil', icon: '☺' }
 ]
 
+/** Aviso de solicitudes de amistad sin contestar, sobre el icono de Social. */
+function Badge({ count }: { count: number }) {
+  if (count <= 0) return null
+  return (
+    <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold leading-none text-ink-950">
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
 export default function Layout() {
   const location = useLocation()
+  const social = useSocial()
+  const pending = social.lists.incoming.length
   // El modo entreno ocupa la pantalla entera: sin nav que distraiga.
   const immersive = location.pathname.startsWith('/entreno/')
 
@@ -35,7 +49,10 @@ export default function Layout() {
               isActive ? 'bg-ink-800 text-ink-100' : 'text-ink-300 hover:bg-ink-850 hover:text-ink-100'
             )}
           >
-            <span className="w-4 text-center opacity-70">{item.icon}</span>
+            <span className="relative w-4 text-center">
+              <span className="opacity-70">{item.icon}</span>
+              {item.to === '/social' && <Badge count={pending} />}
+            </span>
             {item.label}
           </NavLink>
         ))}
@@ -59,7 +76,10 @@ export default function Layout() {
               isActive ? 'text-accent' : 'text-ink-500'
             )}
           >
-            <span className="text-base leading-none">{item.icon}</span>
+            <span className="relative text-base leading-none">
+              {item.icon}
+              {item.to === '/social' && <Badge count={pending} />}
+            </span>
             <span className="max-w-full truncate px-0.5">{item.label}</span>
           </NavLink>
         ))}

@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSyncState } from '../db/db'
 import { pendingCount, sync } from '../db/sync'
+import { publishSocial } from '../db/social'
+import { displayNameOf } from '../db/auth'
 import { useAuth } from './AuthProvider'
 
 interface SyncContextValue {
@@ -26,6 +28,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const uid = auth.status === 'dentro' ? auth.user.uid : null
   const uidRef = useRef<string | null>(null)
   uidRef.current = uid
+  const nameRef = useRef<string | null>(null)
+  nameRef.current = auth.status === 'dentro' ? displayNameOf(auth.user) : null
 
   const state = useLiveQuery(() => getSyncState(), [])
   const pending = useLiveQuery(() => (uid ? pendingCount() : Promise.resolve(0)), [uid, state], 0)
@@ -38,6 +42,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const report = await sync(current)
     setBusy(false)
     setError(report.ok ? null : report.error ?? 'Error al sincronizar')
+
+    // Social va detras: publica lo que ya hay en la base local, asi que solo
+    // tiene sentido con el sync al dia. Sus fallos los guarda aparte.
+    if (report.ok) void publishSocial(current, nameRef.current)
   }, [])
 
   // Al entrar, al volver la conexion y cada pocos minutos.

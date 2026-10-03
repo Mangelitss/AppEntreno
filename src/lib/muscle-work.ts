@@ -10,7 +10,7 @@
 import { db } from '../db/db'
 import { epley1RM } from './stats'
 import { isRankable, groupOf, MUSCLE_GROUPS } from './muscle-groups'
-import type { Exercise } from '../db/types'
+import type { Exercise, WorkoutSet } from '../db/types'
 
 /** Lo que aporta una serie a un musculo secundario frente al objetivo. */
 export const SECONDARY_WEIGHT = 0.4
@@ -60,10 +60,19 @@ export async function muscleWorkInRange(fromKey: string, toKey: string): Promise
   if (inRange.size === 0) return new Map()
 
   const exercises = new Map((await db.exercises.toArray()).map(e => [e.id, e]))
-  const sets = (await db.sets.toArray()).filter(
-    s => !s.deletedAt && s.done === 1 && s.type !== 'warmup' && inRange.has(s.workoutId)
-  )
+  const sets = (await db.sets.toArray()).filter(s => inRange.has(s.workoutId))
 
+  return muscleWorkOf(sets, exercises)
+}
+
+/**
+ * Trabajo por musculo de un monton de series, sin pasar por la base de datos.
+ *
+ * Es el nucleo de muscleWorkInRange, separado para poder usarlo tambien con
+ * las series de un solo entreno (el post de Social). Aplica los mismos
+ * filtros: series completadas que no son calentamiento, y sin cardio.
+ */
+export function muscleWorkOf(sets: WorkoutSet[], exercises: Map<string, Exercise>): Map<string, MuscleWork> {
   const result = new Map<string, MuscleWork>()
   const bump = (muscle: string, share: number, direct: boolean, e1rm: number, volume: number) => {
     if (!isRankable(muscle)) return
@@ -77,6 +86,7 @@ export async function muscleWorkInRange(fromKey: string, toKey: string): Promise
   }
 
   for (const set of sets) {
+    if (set.deletedAt || set.done !== 1 || set.type === 'warmup') continue
     const exercise = exercises.get(set.exerciseId)
     if (!exercise || exercise.tracking === 'cardio') continue
     const e1rm = epley1RM(set.weight, set.reps)
